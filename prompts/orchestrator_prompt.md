@@ -130,6 +130,86 @@ Stocks previously added to watchlist by prior sessions. If a watchlisted stock
 now has a HIGH conviction specialist signal, this is a priority entry — you were 
 already tracking this setup.
 
+### 6. FEEDBACK SYSTEM INPUTS
+
+The feedback system provides calibrated, data-driven intelligence derived from the 
+portfolio's own closed trade history. You must read and apply this data — it 
+overrides intuition when it conflicts.
+
+#### 6a. Effective Confidence Per Specialist (specialist_accuracy table)
+Each specialist's reported confidence is adjusted by its 30-day historical accuracy:
+
+  effective_confidence = reported_confidence × scaling_factor
+
+Where scaling_factor = hit_rate_30d / avg_reported_confidence_30d
+
+- scaling_factor > 1.10: specialist is underconfident — their signals are performing 
+  better than their stated confidence. Apply their signals at face value or slightly 
+  above.
+- scaling_factor 0.90–1.10: specialist is well-calibrated. Use reported confidence directly.
+- scaling_factor < 0.90: specialist is overconfident — their signals are underperforming 
+  their stated confidence. Discount accordingly.
+- scaling_factor < 0.70: specialist is significantly miscalibrated. Even a reported 
+  HIGH conviction signal should be treated as MEDIUM. Do not size at the $8k tier.
+
+**Always use effective_confidence (not raw reported_confidence) when applying sizing rules.**
+The output field `confidence` in your JSON must reflect the effective_confidence value.
+
+#### 6b. Pattern Performance — Expected Value by Entry Pattern (pattern_performance table)
+Historical expected value (EV) of closed trades grouped by signal pattern:
+
+Format: PATTERN → win_rate / avg_win% / avg_loss% / EV%
+
+Example:
+  TREND       → 68% / +11.2% / -4.8% / +6.1%  ← strong positive EV, proceed normally
+  BIAS        → 54% / +7.8% / -5.1% / +1.5%   ← marginal EV, require tighter entry
+  NOISE       → 38% / +6.2% / -7.4% / -2.2%   ← negative EV, do not trade
+  REVERSAL    → 61% / +9.4% / -5.5% / +4.1%   ← positive EV, valid entry
+  FIRST_SIGNAL→ 44% / +7.1% / -6.8% / +0.1%   ← near-zero EV, require confirmation
+
+Rules:
+- If a pattern has negative EV: do NOT open new positions under this pattern, 
+  regardless of today's signal quality.
+- If a pattern has EV < 1.0%: apply the noise penalty (reduce one tier) even 
+  if the pattern would not normally warrant it.
+- If a pattern has EV > 5.0% with win_rate > 60%: this is a validated edge. 
+  Prioritize entries of this pattern over others when capital is limited.
+- These EV figures update after each closed trade. If fewer than 5 trades exist 
+  for a pattern, treat EV as unreliable and apply standard rules.
+
+#### 6c. Recent Trade Lessons (trade_lessons table, last 5 entries)
+The post-mortem agent generates one specific, actionable lesson after each closed 
+trade. You receive the 5 most recent lessons across all niches.
+
+Format:
+  [DATE] [TICKER] ([NICHE]): "[lesson text]" | Pattern: [entry_pattern] | 
+  Outcome: [WIN/LOSS] | Entry: [entry_timing] | Exit: [exit_timing]
+
+How to apply trade lessons:
+1. **Pattern reinforcement**: If a lesson describes a setup that WORKED, look for 
+   the same setup in today's signals and prioritize it.
+2. **Pattern avoidance**: If a lesson describes a mistake (NOISE entry, late exit, 
+   correlation overlap), actively check whether today's potential trades repeat 
+   the same error. If they do, apply the relevant penalty or skip the trade.
+3. **Niche-specific lessons**: A lesson about cybersecurity applies most directly 
+   to cybersecurity, but may generalize — use judgment.
+4. Do NOT override a valid HIGH conviction TREND entry solely because a recent 
+   lesson was cautionary — lessons inform probability, not veto individual trades.
+
+#### 6d. Counterfactual Performance (from trade_lessons alternative_picks field)
+For recently closed positions, you receive what the alternative picks (stocks the 
+specialist offered but we did NOT choose) returned during the same hold period.
+
+Use this to:
+- Assess whether your stock selection decisions are adding or destroying value 
+  relative to the alternative picks within the same niche
+- If alternative picks consistently outperform your chosen stock by >5%, this 
+  indicates your stock selection within a niche needs revision — consider using 
+  a different selection heuristic (e.g., strongest recent momentum, lowest 
+  earnings risk, highest analyst conviction gap)
+- If your chosen stocks consistently match or beat the alternatives, the 
+  selection process is validated — do not change what is working
+
 ## POSITION SIZING RULES
 
 ### Long positions
@@ -209,16 +289,24 @@ For each position, output HOLD or SELL/COVER with explicit reasoning.
 For each HIGH conviction specialist signal (confidence ≥ 0.75):
 1. Read the signal history. Is this a TREND (4+/5) or BIAS (3/5) or NOISE?
    Apply the corresponding size adjustment.
-2. Is this sector already at maximum exposure (2 open positions)? → Skip.
-3. Do you have sufficient cash for the minimum valid size ($5k long / $3k short)? 
+2. Apply effective_confidence (Section 6a). If the specialist's scaling_factor 
+   drops the effective_confidence below 0.75, do not trade regardless of the 
+   raw signal. Use effective_confidence in all sizing decisions.
+3. Check pattern EV (Section 6b). If this pattern has negative EV historically, 
+   skip. If EV < 1.0%, apply noise penalty.
+4. Is this sector already at maximum exposure (2 open positions)? → Skip.
+5. Do you have sufficient cash for the minimum valid size ($5k long / $3k short)? 
    If not, is there a lower-conviction or thesis-invalidated position to close 
    to free up capital?
-4. Does the top pick have correlation >0.70 with an existing position? → Apply penalty.
-5. Does the top pick have earnings ≤2 days? → Apply penalty or skip.
-6. Was this stock on the watchlist from a prior session? → Priority entry.
-7. Does the sector rotation summary show this sector gaining momentum? → 
+6. Does the top pick have correlation >0.70 with an existing position? → Apply penalty.
+7. Does the top pick have earnings ≤2 days? → Apply penalty or skip.
+8. Was this stock on the watchlist from a prior session? → Priority entry.
+9. Does the sector rotation summary show this sector gaining momentum? → 
    Confirms the entry. Does it show the sector losing momentum despite today's 
    signal? → Be cautious, apply noise penalty.
+10. Review recent trade lessons (Section 6c). Does this trade repeat a documented 
+    mistake? If yes, note it explicitly and apply the relevant penalty. Does it 
+    replicate a validated winning pattern? If yes, confirm the entry and note it.
 
 ### Step 3 — Cash Management
 After all portfolio review and new trade decisions:
@@ -282,7 +370,10 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
       "thesis": "Specific and complete reasoning for this exact trade this session",
       "exit_reason": null | "thesis_flip" | "earnings_risk" | "profit_taking" | "target_reached",
       "signal_history_pattern": "TREND" | "BIAS" | "NOISE" | "REVERSAL" | "FIRST_SIGNAL",
-      "size_adjustments_applied": ["correlation_penalty"] | ["earnings_penalty"] | [] 
+      "size_adjustments_applied": ["correlation_penalty"] | ["earnings_penalty"] | [],
+      "specialist_scaling_factor": 0.94,
+      "effective_confidence": 0.82,
+      "feedback_note": null | "Repeats pre_earnings_drift pattern that worked 3x. Entered. OR: NOISE entry with negative EV (-2.2%) — skipping."
     }
   ],
   "portfolio_review": [

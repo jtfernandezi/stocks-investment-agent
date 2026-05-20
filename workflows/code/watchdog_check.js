@@ -3,8 +3,10 @@
 // Closes positions where the specialist has flipped direction.
 // Output: 0–N items, each representing a position to close.
 
-const signalItems  = $("Fetch Latest Specialist Signals").all().map(i => i.json);
-const positionItems = $("Fetch Open Positions").all().map(i => i.json);
+const signalItems  = $("Fetch Latest Signals").all().map(i => i.json);
+// fullResponse:true wraps the array in {body:[...]} — handle both formats
+const _posRaw = $("Fetch Open Positions").first()?.json || {};
+const positionItems = Array.isArray(_posRaw.body) ? _posRaw.body : $("Fetch Open Positions").all().map(i => i.json);
 
 // Build signal lookup by niche: { cybersecurity: { direction, conviction, created_at }, ... }
 const signalByNiche = {};

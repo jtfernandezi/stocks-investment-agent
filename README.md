@@ -13,12 +13,12 @@ Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/posi
 | Workflow orchestration | n8n (Railway) |
 | Database | Neon (PostgreSQL) |
 | Trade execution | Alpaca Paper Trading API |
-| Dashboard | Vercel (static HTML) |
+| Dashboard | Vercel (static HTML) — not yet implemented |
 | Specialist LLMs | GPT-4o-mini |
 | Orchestrator LLM | GPT-5.1 |
 | Fundamentals data | Finnhub API (free tier, morning refresh only) |
-| Price data | Alpaca Data API (batch call, all 80 stocks + SPY) |
-| News | RSS feeds (2 per niche, 15 articles merged per session) |
+| Price data | Alpaca Data API (252 daily bars, all 80 stocks + SPY) |
+| News | RSS feeds (2 per niche, up to 15 articles merged per session) |
 
 ## Architecture
 
@@ -98,8 +98,12 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 
 ## Prompts
 
-All agent system prompts are in `/prompts/`:
+Reference/spec versions are in `/prompts/`. The prompts that execute are embedded in the Code nodes:
 
-- `specialist_prompt.md` — sector analyst (variables: `[NICHE]`, `[STOCKS]`, `[STOCK_DATA]`)
-- `orchestrator_prompt.md` — portfolio manager with full risk + feedback system
-- `post_mortem_prompt.md` — trade attribution and lesson generation
+| File | Embedded in |
+|------|-------------|
+| `specialist_prompt.md` | `04_build_specialist_inputs.js` (constant `SPECIALIST_SYSTEM_PROMPT`) |
+| `orchestrator_prompt.md` | `06_build_orchestrator_input.js` (constant `ORCHESTRATOR_SYSTEM_PROMPT`) |
+| `post_mortem_prompt.md` | `post_mortem_build_input.js` (constant `POST_MORTEM_SYSTEM_PROMPT`) |
+
+The prompt files are the detailed spec; the code versions are slightly condensed. When editing a prompt, update the embedded constant in the relevant Code node file.

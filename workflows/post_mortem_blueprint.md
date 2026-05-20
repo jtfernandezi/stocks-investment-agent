@@ -1,37 +1,49 @@
 # Workflow 3 — Post-Mortem Blueprint
 
-Triggered by webhook. Called by Main Analysis (node 37) and Watchdog (node 8) whenever a SELL or COVER is executed.
+Triggered by webhook. Called by Main Analysis (node 38) and Watchdog (node 7) whenever a SELL or COVER is executed.
+
+## Critical: Node naming
+
+The Code nodes reference other nodes by exact name:
+
+| Code file | References node named |
+|-----------|----------------------|
+| post_mortem_build_input.js | `Workflow Trigger`, `Load Signals During Hold` |
+| post_mortem_store.js | `Build Post-Mortem Input` |
 
 ## Node map
 
 ```
-[1] Webhook Trigger                    (receives closed trade context)
+[1] Workflow Trigger                   (receives closed trade context from Execute Workflow)
       ↓
-[2] Load Historical Context            (Postgres — signals during hold, alt picks perf, sector ETF)
+[2] Load Signals During Hold           (Postgres SELECT — specialist signals during hold period)
       ↓
 [3] Build Post-Mortem Input            (Code: post_mortem_build_input.js)
       ↓
-[4] Call Post-Mortem LLM              (HTTP POST OpenAI — GPT-4o-mini)
+[4] Call Post-Mortem LLM              (Native OpenAI node v1.3 — GPT-4o-mini)
       ↓
-[5] Parse & Store Post-Mortem          (Code: post_mortem_store.js)
+[5] Parse Post-Mortem Output           (Code: post_mortem_store.js)
       ↓
-[6] Insert into trade_lessons          (Postgres INSERT)
+[6] Insert Trade Lesson                (Postgres INSERT into trade_lessons)
       ↓
-[7] Update specialist_accuracy         (Postgres INSERT OR UPDATE)
+[7] Update Specialist Accuracy         (Postgres INSERT OR UPDATE specialist_accuracy)
       ↓
-[8] Update pattern_performance         (Postgres INSERT OR UPDATE)
+[8] Update Pattern Performance         (Postgres INSERT OR UPDATE pattern_performance)
 ```
+
+> **Note:** "Fetch Sector ETF Return" and "Fetch Alt Picks Performance" are not implemented as separate nodes. Sector ETF data falls back to `null` in `post_mortem_build_input.js` (uses `?.` optional chaining). Alternative pick returns are passed in the webhook payload (`alt_tickers`, `alt_returns` fields) rather than fetched here.
 
 ## Node configurations
 
-### [1] Webhook Trigger
-- Method: POST
-- Authentication: None (internal — called only by the other workflows)
-- Path: `/post-mortem` (or any path, copy the full URL into POSTMORTEM_WEBHOOK_URL env var)
+### [1] Workflow Trigger
+Node name: **`Workflow Trigger`** (exact — referenced by `post_mortem_build_input.js`)
+- Node type: **Execute Workflow Trigger** (not a Webhook — called by the other workflows via Execute Workflow node)
+- Receives the closed trade payload as input items
+- No URL needed
 
-### [2] Load Historical Context
+### [2] Load Signals During Hold
+Node name: **`Load Signals During Hold`** (exact — referenced by `post_mortem_build_input.js`)
 
-**2a — Signal history during hold:**
 ```sql
 SELECT direction, conviction, confidence, created_at
 FROM stocks.specialist_signals
@@ -40,28 +52,25 @@ WHERE niche = '{{ $json.niche }}'
 ORDER BY created_at ASC;
 ```
 
-**2b — Alternative picks performance (same hold period):**
-We need price returns for the other long/short picks the specialist offered at entry.
-These tickers come from the webhook payload (field: `alt_tickers`).
-Fetch from Alpaca bars: entry_date to exit_date for each alt ticker.
+### [3] Build Post-Mortem Input
+Node name: **`Build Post-Mortem Input`** (exact — referenced by `post_mortem_store.js`)
+- Node type: Code (post_mortem_build_input.js)
 
-**2c — Sector ETF performance (for Attribution Component A):**
-Fetch SPY or sector proxy ETF return for the same hold period.
-Use Alpaca bars for the relevant sector ETF (or SPY as proxy).
+### [4] Call Post-Mortem LLM
+- Node type: **Native OpenAI node v1.3**
+- Model: `gpt-4o-mini`
+- System prompt: `{{ $json.system_prompt }}`
+- User prompt: `{{ $json.user_prompt }}`
+- Temperature: 0.3
+- Max tokens: 1500
+- Response format: JSON object
+- Output shape per item: `{ message: { content: "..." } }` (v1.3 native format, used by post_mortem_store.js)
 
-Sector ETF proxies:
-| Niche | Proxy ETF |
-|-------|-----------|
-| cybersecurity | HACK |
-| defense | ITA |
-| nuclear_uranium | URA |
-| copper_minerals | COPX |
-| ai_semiconductors | SOXX |
-| cloud_hyperscalers | SKYY |
-| oil_gas | XLE |
-| data_centers | DTCR |
+### [5] Parse Post-Mortem Output
+Node name: **`Parse Post-Mortem Output`**
+- Node type: Code (post_mortem_store.js)
 
-### [6] Insert into trade_lessons
+### [6] Insert Trade Lesson
 ```sql
 INSERT INTO stocks.trade_lessons (
   ticker, niche, direction, outcome, pnl_pct, pnl_usd, hold_days,
@@ -82,7 +91,7 @@ INSERT INTO stocks.trade_lessons (
 );
 ```
 
-### [7] Update specialist_accuracy
+### [7] Update Specialist Accuracy
 ```sql
 INSERT INTO stocks.specialist_accuracy (niche, period_days, total_signals, high_conviction_signals,
   correct_signals, hit_rate, avg_reported_confidence, scaling_factor, calibration_error,
@@ -127,7 +136,7 @@ DO UPDATE SET
   updated_at               = NOW();
 ```
 
-### [8] Update pattern_performance
+### [8] Update Pattern Performance
 ```sql
 INSERT INTO stocks.pattern_performance (
   pattern_type, niche, total_trades, winning_trades, win_rate,

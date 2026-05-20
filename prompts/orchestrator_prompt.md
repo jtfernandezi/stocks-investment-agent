@@ -365,7 +365,7 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
       "shares": 10.5,
       "conviction": "HIGH",
       "confidence": 0.87,
-      "stop_loss_pct": 0.085,
+      "stop_loss_pct": 8.5,
       "target_horizon_days": 21,
       "thesis": "Specific and complete reasoning for this exact trade this session",
       "exit_reason": null | "thesis_flip" | "earnings_risk" | "profit_taking" | "target_reached",

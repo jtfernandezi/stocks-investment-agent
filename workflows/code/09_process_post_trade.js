@@ -5,7 +5,7 @@
 // Output: 1 item with all data needed for the two final Neon writes.
 
 const orch     = $("Parse Orchestrator Output").first().json;
-const account  = orch.account;
+const account  = orch.account || {};
 
 // Compute long/short breakdown from executed positions
 // At this point the trades have fired — we'd need to re-fetch the portfolio.

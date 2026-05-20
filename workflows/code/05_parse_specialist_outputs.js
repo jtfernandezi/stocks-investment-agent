@@ -1,5 +1,5 @@
 // Node: Parse Specialist Outputs
-// Position: After Call Specialist LLM (OpenAI HTTP Request — 8 items)
+// Position: After Call Specialist LLM (native OpenAI node v1.3 — 8 items)
 // Input: 8 items, each is the raw OpenAI API response for one niche
 // Output: 8 items with parsed specialist signal + metadata for Neon insert
 
@@ -19,12 +19,12 @@ return inputs.map((item, idx) => {
   let rawContent   = '';
 
   try {
-    rawContent = rawResponse.choices[0].message.content;
-    // Strip any accidental markdown fences (defensive — model was told not to use them)
+    // native OpenAI v1.3 outputs each choice as an item: {message: {content: "..."}}
+    rawContent = rawResponse.message?.content ?? '';
     const cleaned = rawContent.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
     parsedSignal  = JSON.parse(cleaned);
   } catch (err) {
-    parseError = `JSON parse failed: ${err.message}. Raw: ${rawContent.substring(0, 200)}`;
+    parseError = `JSON parse failed: ${err.message}. Raw: ${String(rawContent).substring(0, 200)}`;
     // Fallback signal — marks the niche as unreliable this session
     parsedSignal = {
       niche,
@@ -86,7 +86,7 @@ return inputs.map((item, idx) => {
 
       // Metadata
       parse_error:  parseError,
-      usage_tokens: rawResponse.usage ? rawResponse.usage.total_tokens : null,
+      usage_tokens: rawResponse.tokenUsageEstimate?.totalTokens ?? null,
     }
   };
 });

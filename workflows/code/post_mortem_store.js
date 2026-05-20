@@ -10,7 +10,8 @@ let parsed   = null;
 let rawText  = '';
 
 try {
-  rawText  = llmResponse.choices[0].message.content;
+  // native OpenAI v1.3 outputs each choice as an item: {message: {content: "..."}}
+  rawText = llmResponse.message?.content ?? '';
   const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   parsed   = JSON.parse(cleaned);
 } catch (err) {

@@ -2,6 +2,30 @@
 
 Runs 3×/day: 8:30 AM, 12:00 PM, 4:30 PM ET (Monday–Friday).
 
+## Critical: Node naming
+
+The Code nodes reference other nodes by exact name via `$("Node Name")`. Every node name in this blueprint must match exactly — a typo will break the workflow silently. The table below lists every reference used in the code:
+
+| Code file | References node named |
+|-----------|----------------------|
+| 02_compute_derived_metrics.js | `Set Session`, `Fetch Alpaca Account`, `Fetch Alpaca Positions`, `Fetch Alpaca Open Orders`, `Fetch Price Bars`, `Load Signal History`, `Load Specialist Accuracy`, `Load Pattern Performance`, `Load Trade Lessons`, `Load Watchlist`, `Load Earnings Calendar`, `Load Correlation Matrix`, `Load Portfolio Snapshots`, `Load Fundamentals Cache` |
+| 04_build_specialist_inputs.js | `Compute Derived Metrics`, `Attach Feed Niche` |
+| 05_parse_specialist_outputs.js | `Build Specialist Inputs`, `Compute Derived Metrics` |
+| 06_build_orchestrator_input.js | `Compute Derived Metrics`, `Parse Specialist Outputs` |
+| 07_parse_orchestrator_output.js | `Build Orchestrator Input` |
+| 09_process_post_trade.js | `Parse Orchestrator Output` |
+| Build Watchlist SQL (inline Code) | `Process Post-Trade` |
+| Prepare PM Items (inline Code) | `Process Post-Trade` |
+
+## OpenAI node versions
+
+Two different native OpenAI node versions are used — their output shapes differ:
+
+- **Specialists [23]** → native OpenAI node **v1.3** — output shape: `{ message: { content: "..." } }`
+- **Orchestrator [27]** → native OpenAI node **v2.1** — output shape: `{ output: [{ content: [{ text: "..." }] }] }`
+
+The Code nodes (05 and 07) already parse each format correctly. Do not swap node versions.
+
 ## Node map
 
 ```
@@ -10,35 +34,30 @@ Runs 3×/day: 8:30 AM, 12:00 PM, 4:30 PM ET (Monday–Friday).
 [2]  Set Session                         (Code: 01_set_session.js)
       ↓
 [3]  Fetch Alpaca Account                (HTTP GET /account)
-      ↓
 [4]  Fetch Alpaca Positions              (HTTP GET /positions)
-      ↓
+[4a] Collect Positions                   (Code — aggregates full-response body into {_items, _count})
 [5]  Fetch Alpaca Open Orders            (HTTP GET /orders?status=open&limit=200)
-      ↓
+[5a] Collect Orders                      (Code — aggregates full-response body into {_items, _count})
 [6]  Fetch Price Bars                    (HTTP GET Alpaca Data /stocks/bars)
+     ↑ [3]–[6] run in parallel
       ↓
 [7]  Load Signal History                 (Postgres SELECT)
-      ↓
 [8]  Load Specialist Accuracy            (Postgres SELECT)
-      ↓
 [9]  Load Pattern Performance            (Postgres SELECT)
-      ↓
 [10] Load Trade Lessons                  (Postgres SELECT)
-      ↓
 [11] Load Watchlist                      (Postgres SELECT)
-      ↓
 [12] Load Earnings Calendar              (Postgres SELECT)
-      ↓
 [13] Load Correlation Matrix             (Postgres SELECT)
-      ↓
 [14] Load Portfolio Snapshots            (Postgres SELECT — last 30 days)
-      ↓
+     ↑ [7]–[14] run in parallel
 [15] Is Morning Session?                 (IF: session_type == "morning")
       ↓ TRUE                ↓ FALSE
 [16a] Fetch Fundamentals   [16b] Load Fundamentals Cache   (Postgres SELECT)
       Loop (Code+HTTP)
       ↓                    ↓
-[17] Merge                               (Merge node, mode: Combine All)
+[17a] Merge Neon Data                    (Merge — waits for all 9 Postgres nodes [7]–[16b])
+      ↓
+[17b] Merge All Data                     (Merge — combines Neon data with Alpaca data [3]–[6])
       ↓
 [18] Compute Derived Metrics             (Code: 02_compute_derived_metrics.js)
       ↓
@@ -47,44 +66,50 @@ Runs 3×/day: 8:30 AM, 12:00 PM, 4:30 PM ET (Monday–Friday).
       ↓
 [20] Fetch RSS Feed                      (HTTP GET — processes 16 items)
       ↓
-[21] Build Specialist Inputs             (Code: 04_build_specialist_inputs.js)
+[21] Attach Feed Niche                   (Code — parses RSS XML, outputs N articles tagged by niche)
+      ↓
+[22] Build Specialist Inputs             (Code: 04_build_specialist_inputs.js)
       → outputs 8 items (one per niche)
       ↓
-[22] Call Specialist LLM                 (HTTP POST OpenAI — processes 8 items)
+[23] Call Specialist LLM                 (OpenAI node v1.3 — processes 8 items)
       ↓
-[23] Parse Specialist Outputs            (Code: 05_parse_specialist_outputs.js)
+[24] Parse Specialist Outputs            (Code: 05_parse_specialist_outputs.js)
       ↓
-[24] Store Specialist Signals            (Postgres INSERT — 8 inserts)
+[25] Store Specialist Signals            (Postgres INSERT — 8 inserts)
       ↓
-[25] Build Orchestrator Input            (Code: 06_build_orchestrator_input.js)
+[26] Build Orchestrator Input            (Code: 06_build_orchestrator_input.js)
       → single item
       ↓
-[26] Call Orchestrator LLM              (HTTP POST OpenAI)
+[27] Call Orchestrator LLM              (OpenAI node v2.1)
       ↓
-[27] Parse Orchestrator Output           (Code: 07_parse_orchestrator_output.js)
+[28] Parse Orchestrator Output           (Code: 07_parse_orchestrator_output.js)
       ↓
-[28] Is Market Open?                     (IF: is_market_open == true)
-      ↓ TRUE                ↓ FALSE
-[29a] Prepare Trade Actions              [29b] No Op
+[29] Process Post-Trade                  (Code: 09_process_post_trade.js)
+      ↓
+[30] Store Portfolio Snapshot            (Postgres INSERT)
+      ↓
+[31a] Build Watchlist SQL               (Code inline — builds DELETE+INSERT SQL from watchlist array)
+[31b] Execute Watchlist Update          (Postgres — executes the SQL built by [31a])
+      ↓
+[32] Is Market Open?                     (IF: is_market_open == true)
+      ↓ TRUE                  ↓ FALSE
+[33]  Prepare Trade Actions  [34] Market Closed - End
       (Code: 08_prepare_trade_actions.js)
       → outputs N items (one per action)
       ↓
-[30] Execute Market Order                (HTTP POST Alpaca /orders)
+[35] Execute Market Order                (HTTP POST Alpaca /orders)
       ↓
-[31] Is BUY or SHORT?                    (IF: needs trailing stop)
+[36] Needs Trailing Stop?                (IF: needs_trailing_stop == true)
       ↓ TRUE                ↓ FALSE
-[32a] Submit Trailing Stop               [32b] Continue
+[37a] Submit Trailing Stop   [37b] No Stop Needed
       (HTTP POST Alpaca /orders)
+      ↓ (both branches feed into [38])
+[38] Has Post-Mortems?                   (IF: has_post_mortems == true)
+      ↓ TRUE                ↓ FALSE
+[39a] Prepare PM Items       [39b] No PM - End
+      (Code inline — splits post_mortem_payloads array into individual items)
       ↓
-[33] Merge trade branches                (Merge)
-      ↓
-[34] Process Post-Trade                  (Code: 09_process_post_trade.js)
-      ↓
-[35] Store Portfolio Snapshot            (Postgres INSERT)
-      ↓
-[36] Update Watchlist                    (Postgres — DELETE then INSERT)
-      ↓
-[37] Trigger Post-Mortems                (HTTP POST webhook — one per SELL/COVER)
+[40] Trigger Post-Mortem                 (Execute Workflow — calls Post-Mortem workflow by ID)
 ```
 
 ---
@@ -125,12 +150,13 @@ Runs 3×/day: 8:30 AM, 12:00 PM, 4:30 PM ET (Monday–Friday).
 ---
 
 ### [6] Fetch Price Bars
-All 80 stocks + SPY, daily bars, last 30 days (enough for 30d momentum + ATR-14).
+All 80 stocks + SPY, daily bars, last 252 trading days (~1 year).
+- **Why 252**: The compute node needs 31 bars for 30d momentum (sorted[length-31]), 15 for ATR-14, and 252 for accurate 52-week high/low. Using less than 31 causes 30d momentum to always return 0%.
 
 - Method: GET
 - URL (expression):
 ```
-https://data.alpaca.markets/v2/stocks/bars?symbols=CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB,LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON,CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE,FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC,NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM,MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM,XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG,EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC,SPY&timeframe=1Day&limit=30&feed=sip
+https://data.alpaca.markets/v2/stocks/bars?symbols=CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB,LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON,CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE,FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC,NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM,MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM,XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG,EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC,SPY&timeframe=1Day&limit=252&feed=sip
 ```
 - Authentication: Alpaca Data API credential
 - Response format: JSON
@@ -269,97 +295,172 @@ WHERE fetched_at >= NOW() - INTERVAL '48 hours';
 
 ---
 
-### [22] Call Specialist LLM
-- Method: POST
-- URL: `https://api.openai.com/v1/chat/completions`
-- Authentication: OpenAI credential
-- Body (JSON):
-```json
-{
-  "model": "gpt-4o-mini",
-  "messages": [
-    {
-      "role": "system",
-      "content": "{{ $json.system_prompt }}"
-    },
-    {
-      "role": "user",
-      "content": "{{ $json.user_prompt }}"
+### [21] Attach Feed Niche
+- Node type: Code (JavaScript)
+- Node name: **`Attach Feed Niche`** (exact — referenced by `04_build_specialist_inputs.js`)
+- Input: 16 items from [20], each with `{ niche, feed_url, feed_index, rss_raw }`
+- Output: N article items, each with `{ niche, title, summary, pubDate, link }`
+
+```javascript
+// Node: Attach Feed Niche
+// Parses RSS XML from each feed and outputs individual articles tagged with their niche.
+
+const items = $input.all();
+const articles = [];
+
+for (const item of items) {
+  const niche = item.json.niche;
+  const xml   = item.json.rss_raw || '';
+
+  // Match RSS <item> blocks (handles both standard RSS and Atom-style entries)
+  const itemMatches = [...xml.matchAll(/<item[^>]*>([\s\S]*?)<\/item>/gi),
+                       ...xml.matchAll(/<entry[^>]*>([\s\S]*?)<\/entry>/gi)];
+
+  for (const match of itemMatches) {
+    const block = match[1];
+
+    const title = (
+      block.match(/<title[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) ||
+      block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+    )?.[1]?.trim().replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>') || '';
+
+    const rawSummary = (
+      block.match(/<description[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/description>/i) ||
+      block.match(/<description[^>]*>([\s\S]*?)<\/description>/i) ||
+      block.match(/<summary[^>]*>([\s\S]*?)<\/summary>/i)
+    )?.[1] || '';
+    const summary = rawSummary.replace(/<[^>]+>/g, '').trim().substring(0, 400);
+
+    const pubDate = (
+      block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i) ||
+      block.match(/<published[^>]*>([\s\S]*?)<\/published>/i) ||
+      block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)
+    )?.[1]?.trim() || '';
+
+    const link = (
+      block.match(/<link[^>]*href="([^"]+)"/i) ||
+      block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)
+    )?.[1]?.trim() || '';
+
+    if (title) {
+      articles.push({ json: { niche, title, summary, pubDate, link } });
     }
-  ],
-  "temperature": 0.3,
-  "max_tokens": 2000,
-  "response_format": { "type": "json_object" }
+  }
 }
+
+return articles.length > 0 ? articles : [{ json: { niche: 'none', title: '', summary: '', pubDate: '', link: '' } }];
 ```
+
+---
+
+### [23] Call Specialist LLM
+- Node type: **Native OpenAI node v1.3** (not HTTP Request — the parse code expects its output shape)
+- Model: `gpt-4o-mini`
+- System prompt: `{{ $json.system_prompt }}`
+- User prompt: `{{ $json.user_prompt }}`
+- Temperature: 0.3
+- Max tokens: 2000
+- Response format: JSON object
 - Timeout: 60 seconds
+- Output shape per item: `{ message: { content: "..." } }` (v1.3 native format, used by 05_parse_specialist_outputs.js)
 
 ---
 
-### [26] Call Orchestrator LLM
-- Same as [22] but:
-  - model: `gpt-5.1`
-  - max_tokens: `4000`
+### [27] Call Orchestrator LLM
+- Node type: **Native OpenAI node v2.1** (Responses API — different output shape from specialists)
+- Model: `gpt-5.1`
+- System prompt: `{{ $json.system_prompt }}`
+- User prompt: `{{ $json.user_prompt }}`
+- Max tokens: 4000
+- Temperature: 0.3
+- Output shape: `{ output: [{ content: [{ text: "..." }] }] }` (v2.1 native format, used by 07_parse_orchestrator_output.js)
 
 ---
 
-### [30] Execute Market Order
+### [31] Execute Market Order
 - Method: POST
 - URL: `https://paper-api.alpaca.markets/v2/orders`
 - Authentication: Alpaca Trading API credential
-- Body: `{{ $json.order_payload }}` (set by node [29a])
+- Body: `{{ $json.order_payload }}` (pre-built JSON string, set by node [30a] Prepare Trade Actions)
 
 ---
 
-### [32a] Submit Trailing Stop
-- Method: POST  
+### [36] IF — Needs Trailing Stop?
+- Condition: `{{ $json.needs_trailing_stop }}` equals `true`
+
+---
+
+### [37a] Submit Trailing Stop
+- Method: POST
 - URL: `https://paper-api.alpaca.markets/v2/orders`
 - Authentication: Alpaca Trading API credential
-- Body: `{{ $json.trail_stop_payload }}` (set by node [30] after fill)
+- Body: `{{ $json.trail_stop_payload }}` (pre-built JSON string set by Parse Orchestrator Output)
 
 ---
 
-### [31] IF — Needs Trailing Stop?
-- Condition: `{{ $json.action }}` equals `BUY` OR `{{ $json.action }}` equals `SHORT`
-- (Use OR combinator)
+### [30] Store Portfolio Snapshot
+Input comes from Process Post-Trade — data is nested under `$json.snapshot.*`.
 
----
-
-### [35] Store Portfolio Snapshot
 ```sql
 INSERT INTO stocks.portfolio_snapshots 
   (session, portfolio_value_usd, cash_usd, long_value_usd, short_value_usd,
    unrealized_pnl_usd, spy_price, spy_return_pct, spy_cumulative_pct,
    orchestrator_summary, positions_json, short_positions_json, raw_json)
 VALUES (
-  '{{ $json.session_id }}',
-  {{ $json.portfolio_value }},
-  {{ $json.cash }},
-  {{ $json.long_value }},
-  {{ $json.short_value }},
-  {{ $json.unrealized_pnl }},
-  {{ $json.spy_price }},
-  {{ $json.spy_return_pct }},
-  {{ $json.spy_cumulative_pct }},
-  '{{ $json.orchestrator_summary }}',
-  '{{ $json.positions_json }}'::jsonb,
-  '{{ $json.short_positions_json }}'::jsonb,
-  '{{ $json.raw_json }}'::jsonb
+  '{{ $json.snapshot.session }}',
+  {{ $json.snapshot.portfolio_value_usd }},
+  {{ $json.snapshot.cash_usd }},
+  {{ $json.snapshot.long_value_usd }},
+  {{ $json.snapshot.short_value_usd }},
+  {{ $json.snapshot.unrealized_pnl_usd }},
+  {{ $json.snapshot.spy_price }},
+  {{ $json.snapshot.spy_return_pct }},
+  {{ $json.snapshot.spy_cumulative_pct }},
+  '{{ $json.snapshot.orchestrator_summary }}',
+  '{{ $json.snapshot.positions_json }}'::jsonb,
+  '{{ $json.snapshot.short_positions_json }}'::jsonb,
+  '{{ $json.snapshot.raw_json }}'::jsonb
 )
 ON CONFLICT DO NOTHING;
 ```
 
 ---
 
-### [36] Update Watchlist
-Two Postgres nodes in sequence:
-1. `DELETE FROM stocks.watchlist;`
-2. For each watchlist item (loop): `INSERT INTO stocks.watchlist (ticker, niche, direction, reason) VALUES (...)`
+### [31a] Build Watchlist SQL
+Inline Code node. Reads `$("Process Post-Trade").first().json.watchlist` and builds a single SQL string combining DELETE + INSERT:
+```javascript
+const input = $("Process Post-Trade").first().json;
+const wl = input.watchlist || [];
+const esc = s => (s||'').replace(/'/g,"''");
+let sql = "DELETE FROM stocks.watchlist;";
+if (wl.length > 0) {
+  const vals = wl.map(w=>`('${esc(w.ticker)}','${esc(w.niche)}','${esc(w.direction)}','${esc(w.reason||'').substring(0,500)}')`).join(',');
+  sql += ` INSERT INTO stocks.watchlist (ticker,niche,direction,reason) VALUES ${vals};`;
+}
+return [{json:{watchlist_sql:sql}}];
+```
+
+### [31b] Execute Watchlist Update
+- Operation: Execute Query
+- Query: `{{ $json.watchlist_sql }}`
 
 ---
 
-### [37] Trigger Post-Mortems
-- For each SELL/COVER action in the executed trades:
-- Method: POST to the Post-Mortem workflow's webhook URL
-- Body: full closed trade context (see post_mortem_blueprint.md)
-- Run as separate items via SplitInBatches
+### [38] Has Post-Mortems?
+- IF node
+- Condition: `{{ $json.has_post_mortems }}` equals `true`
+
+### [39a] Prepare PM Items
+Inline Code node. Splits `post_mortem_payloads` array into individual items:
+```javascript
+const input = $("Process Post-Trade").first().json;
+const payloads = input.post_mortem_payloads || [];
+if (payloads.length === 0) return [];
+return payloads.map(p => ({json: p}));
+```
+
+### [40] Trigger Post-Mortem
+- Node type: **Execute Workflow** (not HTTP Request)
+- Calls the Post-Mortem workflow (Workflow 3) directly by ID
+- No webhook URL needed — this is workflow-to-workflow execution
+- Each SELL/COVER payload is passed as input to the Post-Mortem workflow

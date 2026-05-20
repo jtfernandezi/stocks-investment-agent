@@ -1,6 +1,6 @@
 // Node: Parse Orchestrator Output
-// Position: After Call Orchestrator LLM
-// Input: OpenAI API response (1 item)
+// Position: After Call Orchestrator LLM (native OpenAI node v2.1)
+// Input: 1 item — output[0].content[0].text contains the JSON string
 // Output: 1 item with all parsed orchestrator decisions + trade action items
 
 const rawResponse   = $input.first().json;
@@ -11,7 +11,7 @@ let parsed   = null;
 let rawText  = '';
 
 try {
-  rawText = rawResponse.choices[0].message.content;
+  rawText = rawResponse.output?.[0]?.content?.[0]?.text;  // native OpenAI node v2.1 output
   const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
   parsed = JSON.parse(cleaned);
 } catch (err) {
@@ -39,10 +39,13 @@ const enrichedActions = (parsed.portfolio_actions || []).map(action => {
   const price     = priceMap[ticker] ? priceMap[ticker].current : null;
   const stopPct   = action.stop_loss_pct || (priceMap[ticker] ? priceMap[ticker].trail_pct : 8);
 
-  // Calculate shares from size_usd if not provided by orchestrator
-  let shares = action.shares;
-  if (!shares && price && action.size_usd) {
+  // Always recalculate shares from actual current price — LLM often assumes a stale price
+  // and its share count can be way off. Ignore action.shares entirely.
+  let shares = null;
+  if (price && action.size_usd) {
     shares = Math.floor(action.size_usd / price * 100) / 100;  // round down to 2 decimals
+  } else if (action.shares) {
+    shares = action.shares;  // last resort: use LLM value only when price is unavailable
   }
 
   // Market order payload for Alpaca
@@ -121,7 +124,7 @@ const postMortemPayloads = closedPositions.map(action => {
 return [{
   json: {
     // Core orchestrator decisions
-    is_market_open:            parsed.is_market_open,
+    is_market_open:            parsed.is_market_open === true,
     portfolio_actions:         enrichedActions,
     portfolio_review:          parsed.portfolio_review         || [],
     watchlist:                 parsed.watchlist                 || [],
@@ -141,7 +144,7 @@ return [{
     spyCumulativePct: orchInput.portfolio_state.spyCumulativePct,
 
     // Raw for debugging
-    raw_orchestrator_response: rawText.substring(0, 5000),
+    raw_orchestrator_response: (rawText || '').substring(0, 5000),
     usage_tokens: rawResponse.usage ? rawResponse.usage.total_tokens : null,
   }
 }];

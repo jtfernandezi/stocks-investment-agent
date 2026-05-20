@@ -4,7 +4,7 @@
 // Output: 1 item with full post-mortem prompt for GPT-4o-mini
 
 // ── GATHER DATA ───────────────────────────────────────────────────────────────
-const webhook  = $("Webhook Trigger").first().json;  // or $("Webhook").first().json depending on n8n version
+const webhook  = $("Workflow Trigger").first().json;
 const sigRows  = $("Load Signals During Hold").all().map(i => i.json);
 const sectorReturn = $("Fetch Sector ETF Return").first()?.json || {};
 

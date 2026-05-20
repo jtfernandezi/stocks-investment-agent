@@ -1,6 +1,6 @@
 // Node: Build Specialist Inputs
-// Position: After Fetch RSS Feed (HTTP node that processed 16 items)
-// Input:  $input.all() = 16 RSS responses (in same order as Prepare RSS Sources)
+// Position: After Attach Feed Niche (native RSS + niche injector, N articles per niche)
+// Input:  $input.all() = all structured articles from Attach Feed Niche
 // Output: 8 items — one per niche — each with system_prompt + user_prompt for OpenAI
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
@@ -27,47 +27,18 @@ const NICHE_DISPLAY = {
 };
 
 // ── GATHER DATA ───────────────────────────────────────────────────────────────
-const rssResponses  = $input.all();
-const rssSources    = $("Prepare RSS Sources").all().map(i => i.json);
-const ctx           = $("Compute Derived Metrics").first().json;
+const ctx = $("Compute Derived Metrics").first().json;
 
 // ── GROUP RSS BY NICHE ────────────────────────────────────────────────────────
-// Parse RSS XML to extract article titles and summaries (max 8 per feed).
-// n8n HTTP Request returns the raw RSS as text in item.json.rss_raw (if "Put Response In Field" = rss_raw)
-// OR in item.json.data if not configured — adapt as needed.
-function extractArticles(responseItem) {
-  let raw = '';
-  if (responseItem && responseItem.json) {
-    raw = responseItem.json.rss_raw || responseItem.json.data || JSON.stringify(responseItem.json);
-  }
-  if (!raw || raw.length < 50) return [];
-
-  const articles = [];
-  // Simple regex extraction from RSS/Atom XML — covers the most common formats
-  const itemRegex = /<(?:item|entry)[^>]*>([\s\S]*?)<\/(?:item|entry)>/gi;
-  let match;
-  while ((match = itemRegex.exec(raw)) !== null && articles.length < 8) {
-    const block = match[1];
-    const title   = (block.match(/<title[^>]*>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/is) || [])[1] || '';
-    const summary = (block.match(/<(?:description|summary|content:encoded)[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/(?:description|summary|content:encoded)>/is) || [])[1] || '';
-    const pubDate = (block.match(/<(?:pubDate|published|updated)[^>]*>(.*?)<\/(?:pubDate|published|updated)>/i) || [])[1] || '';
-    if (title.trim()) {
-      articles.push({
-        title:   title.replace(/<[^>]+>/g, '').trim().substring(0, 200),
-        summary: summary.replace(/<[^>]+>/g, '').trim().substring(0, 500),
-        date:    pubDate.trim().substring(0, 30),
-      });
-    }
-  }
-  return articles;
-}
-
+// Articles are already structured by the native RSS node + Attach Feed Niche:
+// each item has { niche, title, link, pubDate, summary }
 const rssByNiche = {};
-for (let i = 0; i < rssSources.length; i++) {
-  const niche   = rssSources[i].niche;
-  const articles = extractArticles(rssResponses[i]);
+for (const item of $("Attach Feed Niche").all()) {
+  const { niche, title, summary, pubDate } = item.json;
   if (!rssByNiche[niche]) rssByNiche[niche] = [];
-  rssByNiche[niche].push(...articles);
+  if (rssByNiche[niche].length < 15) {
+    rssByNiche[niche].push({ title, summary, date: pubDate });
+  }
 }
 
 // ── FORMAT STOCK DATA BLOCK ───────────────────────────────────────────────────

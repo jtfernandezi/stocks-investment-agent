@@ -90,9 +90,31 @@ Two different native OpenAI node versions are in use — their output shapes dif
 
 - **Shares calculation**: always recalculated from live price in `07_parse_orchestrator_output.js` — the LLM's share count is ignored (it uses stale prices)
 - **SQL injection**: all LLM-generated text goes through `sqlEsc = s => s.replace(/'/g, "''")` before string interpolation in every Postgres query
-- **Price bars**: fetch 252 bars minimum — fewer than 31 causes 30d momentum to always return 0%; fewer than 252 breaks 52-week high/low
+- **Price bars**: fetched in 9 parallel HTTP nodes (one per niche + SPY), each 10 symbols × 252 bars. A Code node `Fetch Price Bars` merges all 9 responses into `{bars: {...}}` — `02_compute_derived_metrics.js` reads from this node by name unchanged. Do NOT revert to a single URL fetch — that caused pagination (only 30 bars total returned).
 - **Post-mortem trigger**: uses Execute Workflow node (workflow-to-workflow), NOT an HTTP webhook
 - **Watchdog close**: uses `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders
+
+## Price Bar Fetch Nodes (9 HTTP + 1 Code)
+
+All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Data` credential + manual `APCA-API-SECRET-KEY` header.
+
+| Node | Symbols | limit |
+|------|---------|-------|
+| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB | 252 |
+| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 252 |
+| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 252 |
+| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC | 252 |
+| Fetch Bars AI Semis | NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM | 252 |
+| Fetch Bars Cloud | MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM | 252 |
+| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 252 |
+| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 252 |
+| Fetch Bars SPY | SPY | 252 |
+| **Fetch Price Bars** (Code) | Merges all 9 → `{bars: {...}}` | — |
+
+## Known Open Issues (as of 2026-05-20)
+
+1. **`stock_fundamentals` table empty** — Finnhub morning fetch loop not yet working in n8n. Until fixed, specialists receive N/A for all P/E, margins, analyst consensus data. Investigate node [16a] "Fetch Fundamentals" in Main Analysis.
+2. **Specialist `conviction` field compliance** — GPT-4o-mini occasionally outputs `"conviction": "NEUTRAL"` (invalid — must be HIGH/MEDIUM/LOW). Add normalization guard in `05_parse_specialist_outputs.js`: if conviction not in [HIGH, MEDIUM, LOW], default to LOW.
 
 ## 8 Niches / 80 Stocks
 

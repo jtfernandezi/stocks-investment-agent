@@ -4,9 +4,12 @@
 // Output: 0–N items, each representing a position to close.
 
 const signalItems  = $("Fetch Latest Signals").all().map(i => i.json);
-// fullResponse:true wraps the array in {body:[...]} — handle both formats
-const _posRaw = $("Fetch Open Positions").first()?.json || {};
-const positionItems = Array.isArray(_posRaw.body) ? _posRaw.body : $("Fetch Open Positions").all().map(i => i.json);
+// n8n v2: JSON array response → single item where $json IS the array.
+// fullResponse:true → $json = {body: [...]}. Split items → all().map()
+const _posRaw = $("Fetch Open Positions").first()?.json;
+const positionItems = Array.isArray(_posRaw)        ? _posRaw :
+                      Array.isArray(_posRaw?.body)  ? _posRaw.body :
+                      $("Fetch Open Positions").all().map(i => i.json);
 
 // Build signal lookup by niche: { cybersecurity: { direction, conviction, created_at }, ... }
 const signalByNiche = {};

@@ -111,9 +111,13 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 | Fetch Bars SPY | SPY | 252 |
 | **Fetch Price Bars** (Code) | Merges all 9 → `{bars: {...}}` | — |
 
+## Key Implementation Details — Execute Market Order
+
+The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyParameters`** (n8n key-value pairs mode), NOT `specifyBody: "string"` or `specifyBody: "json"`. This is the only approach that sends a correctly structured JSON body to Alpaca. The `order_payload` / `trail_stop_payload` objects in `$json` are kept for debug logging but the HTTP nodes pull fields directly: `$json.ticker`, `$json.shares`, `$json.action`, `$json.stop_pct_used`.
+
 ## Known Open Issues
 
-All 3 original issues from first run (2026-05-20) are now fixed. No open issues.
+No open issues. Main Analysis workflow is fully operational as of 2026-05-20 (5 positions live: CCJ, CRWD, MSFT, NVDA, RTX).
 
 ## 8 Niches / 80 Stocks
 

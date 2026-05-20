@@ -39,6 +39,12 @@ return inputs.map((item, idx) => {
     };
   }
 
+  // Normalize conviction — LLM occasionally outputs "NEUTRAL" which is not a valid value
+  const validConvictions = ['HIGH', 'MEDIUM', 'LOW'];
+  if (!validConvictions.includes(parsedSignal.conviction)) {
+    parsedSignal.conviction = 'LOW';
+  }
+
   // Apply effective confidence scaling (do not let the specialist bypass calibration)
   const acc = ctx.specialistEffectiveConf[niche];
   let effective_confidence = parsedSignal.confidence || 0;

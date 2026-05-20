@@ -28,6 +28,9 @@ const longReviews  = positionsJson.filter(p => p.current_action !== 'COVER');
 const shortReviews = positionsJson.filter(p => p.current_action === 'COVER' ||
   (p.current_action === 'HOLD' && p.ticker)); // simplified — orchestrator knows
 
+// Escape single quotes for SQL string interpolation ('' is PostgreSQL's escape for ')
+const sqlEsc = s => (s || '').replace(/'/g, "''");
+
 // Snapshot row for Neon
 const snapshotPayload = {
   session:             orch.session_id,
@@ -39,13 +42,13 @@ const snapshotPayload = {
   spy_price:           orch.spyCurrent || null,
   spy_return_pct:      null,  // session return — compute later if needed
   spy_cumulative_pct:  orch.spyCumulativePct || 0,
-  orchestrator_summary: orch.orchestrator_summary,
-  positions_json:      JSON.stringify(longReviews),
-  short_positions_json: JSON.stringify(shortReviews),
-  raw_json:            JSON.stringify({
+  orchestrator_summary: sqlEsc(orch.orchestrator_summary),
+  positions_json:      sqlEsc(JSON.stringify(longReviews)),
+  short_positions_json: sqlEsc(JSON.stringify(shortReviews)),
+  raw_json:            sqlEsc(JSON.stringify({
     portfolio_actions:         orch.portfolio_actions,
     cash_deployment_rationale: orch.cash_deployment_rationale,
-  }),
+  })),
 };
 
 // New watchlist items (replace entire watchlist each session)

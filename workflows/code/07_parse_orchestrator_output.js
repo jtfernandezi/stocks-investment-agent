@@ -90,8 +90,8 @@ const enrichedActions = (parsed.portfolio_actions || []).map(action => {
     estimated_price:      price,
     stop_pct_used:        stopPct,
     needs_trailing_stop:  action.action === 'BUY' || action.action === 'SHORT',
-    order_payload:        JSON.stringify(marketOrderPayload),
-    trail_stop_payload:   trailStopPayload ? JSON.stringify(trailStopPayload) : null,
+    order_payload:        marketOrderPayload,
+    trail_stop_payload:   trailStopPayload,
   };
 });
 

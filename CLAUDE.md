@@ -111,10 +111,9 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 | Fetch Bars SPY | SPY | 252 |
 | **Fetch Price Bars** (Code) | Merges all 9 → `{bars: {...}}` | — |
 
-## Known Open Issues (as of 2026-05-20)
+## Known Open Issues
 
-1. **`stock_fundamentals` table empty** — Finnhub morning fetch loop not yet working in n8n. Until fixed, specialists receive N/A for all P/E, margins, analyst consensus data. Investigate node [16a] "Fetch Fundamentals" in Main Analysis.
-2. **Specialist `conviction` field compliance** — GPT-4o-mini occasionally outputs `"conviction": "NEUTRAL"` (invalid — must be HIGH/MEDIUM/LOW). Add normalization guard in `05_parse_specialist_outputs.js`: if conviction not in [HIGH, MEDIUM, LOW], default to LOW.
+All 3 original issues from first run (2026-05-20) are now fixed. No open issues.
 
 ## 8 Niches / 80 Stocks
 

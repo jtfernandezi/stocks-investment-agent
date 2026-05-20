@@ -9,12 +9,12 @@ const totalUTCMinutes = utcHour * 60 + utcMinute;
 
 // EDT = UTC-4 (summer). Adjust to UTC-5 in winter.
 // Morning:  8:30 AM ET = 12:30 UTC → range 720–840 min
-// Midday:  12:00 PM ET = 16:00 UTC → range 840–1110 min
-// Close:    4:30 PM ET = 20:30 UTC → range 1110+ min
+// Midday:  12:00 PM ET = 16:00 UTC → range 840–1230 min
+// Close:    4:30 PM ET = 20:30 UTC → range 1230+ min
 let session_type;
 if (totalUTCMinutes >= 720 && totalUTCMinutes < 840) {
   session_type = 'morning';
-} else if (totalUTCMinutes >= 840 && totalUTCMinutes < 1110) {
+} else if (totalUTCMinutes >= 840 && totalUTCMinutes < 1230) {
   session_type = 'midday';
 } else {
   session_type = 'close';

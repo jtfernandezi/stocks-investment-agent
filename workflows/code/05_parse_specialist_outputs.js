@@ -60,6 +60,9 @@ return inputs.map((item, idx) => {
     effective_conviction = 'MEDIUM';
   }
 
+  // Escape single quotes for SQL string interpolation ('' is PostgreSQL's escape for ')
+  const sqlEsc = s => (s || '').replace(/'/g, "''");
+
   return {
     json: {
       // For Postgres insert
@@ -69,12 +72,12 @@ return inputs.map((item, idx) => {
       conviction:  effective_conviction,
       confidence:  parsedSignal.confidence,   // raw reported
       materiality: parsedSignal.materiality,
-      top_picks:   JSON.stringify({
+      top_picks:   sqlEsc(JSON.stringify({
         long_picks:  parsedSignal.long_picks  || [],
         short_picks: parsedSignal.short_picks || [],
-      }),
-      summary:     parsedSignal.summary,
-      raw_json:    JSON.stringify(parsedSignal),
+      })),
+      summary:     sqlEsc(parsedSignal.summary),
+      raw_json:    sqlEsc(JSON.stringify(parsedSignal)),
 
       // For orchestrator consumption
       effective_confidence,

@@ -40,6 +40,9 @@ try {
   };
 }
 
+// Escape single quotes for SQL string interpolation ('' is PostgreSQL's escape for ')
+const sqlEsc = s => (s || '').replace(/'/g, "''");
+
 // Ensure required fields have values (fill from context if LLM omitted them)
 const final = {
   ticker:                   parsed.ticker       || inputCtx.ticker,
@@ -57,9 +60,9 @@ const final = {
   stock_selection_quality:  parsed.stock_selection_quality  || 'SUBOPTIMAL',
   entry_timing:             parsed.entry_timing             || 'OPTIMAL',
   exit_timing:              parsed.exit_timing              || 'OPTIMAL',
-  key_lesson:               parsed.key_lesson               || '',
+  key_lesson:               sqlEsc(parsed.key_lesson        || ''),
   pattern_tag:              parsed.pattern_tag              || 'noise_entry',
-  alternative_picks:        JSON.stringify(parsed.alternative_picks || inputCtx.alternative_picks || []),
+  alternative_picks:        sqlEsc(JSON.stringify(parsed.alternative_picks || inputCtx.alternative_picks || [])),
   entry_specialist_confidence: parsed.entry_specialist_confidence ?? inputCtx.entry_specialist_confidence ?? 0,
   entry_effective_confidence:  parsed.entry_effective_confidence  ?? inputCtx.entry_effective_confidence  ?? 0,
 };

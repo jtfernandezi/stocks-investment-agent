@@ -1,10 +1,10 @@
 // Node: Build Orchestrator Input
-// Position: After Store Specialist Signals (all 8 specialists processed)
+// Position: After Parse & Save All Signals (receives 8 specialist items)
 // Assembles the full orchestrator prompt from all available context
 // Output: 1 item with system_prompt + user_prompt for OpenAI GPT-5.1
 
 const ctx         = $("Compute Derived Metrics").first().json;
-const specialists = $("Parse Specialist Outputs").all().map(i => i.json);
+const specialists = $input.all().map(i => i.json);
 
 // ── HELPER: Format positions ──────────────────────────────────────────────────
 function formatPositions(positions, stopProximity, earningsAtRisk, priceMap) {

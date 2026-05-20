@@ -17,8 +17,9 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 
 ## Three Workflows
 
-**Main Analysis** — 3×/day (8:30 AM, 12 PM, 4:30 PM ET)
-8 specialists → orchestrator → trade execution → snapshot → post-mortem trigger
+**Main Analysis v2** — 3×/day (8:30 AM, 12 PM, 4:30 PM ET) — workflow ID: `l2d06hEvDlfLibms`
+8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger
+_(v1 backup: `mHvO6uIh9uwm3Yzg` — batch specialist pipeline, still exists)_
 
 **Watchdog** — every 30 min during market hours
 Detects thesis-flip on open positions → closes via `DELETE /positions/{ticker}` → triggers post-mortem
@@ -31,32 +32,30 @@ Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders)
 
 | File | Workflow | n8n Node |
 |------|----------|----------|
-| `workflows/code/01_set_session.js` | Main | [2] Set Session |
-| `workflows/code/02_compute_derived_metrics.js` | Main | [18] Compute Derived Metrics |
-| `workflows/code/03_prepare_rss_sources.js` | Main | [19] Prepare RSS Sources |
-| `workflows/code/04_build_specialist_inputs.js` | Main | [22] Build Specialist Inputs |
-| `workflows/code/05_parse_specialist_outputs.js` | Main | [24] Parse Specialist Outputs |
-| `workflows/code/06_build_orchestrator_input.js` | Main | [26] Build Orchestrator Input |
-| `workflows/code/07_parse_orchestrator_output.js` | Main | [28] Parse Orchestrator Output |
-| `workflows/code/08_prepare_trade_actions.js` | Main | [30a] Prepare Trade Actions |
-| `workflows/code/09_process_post_trade.js` | Main | [35] Process Post-Trade |
-| `workflows/code/watchdog_check.js` | Watchdog | [4] Check Signal Flip |
-| `workflows/code/post_mortem_build_input.js` | Post-Mortem | [3] Build Post-Mortem Input |
-| `workflows/code/post_mortem_store.js` | Post-Mortem | [5] Parse & Store Post-Mortem |
+| `workflows/code/01_set_session.js` | Main v2 | Set Session |
+| `workflows/code/02_compute_derived_metrics.js` | Main v2 | Compute Derived Metrics |
+| `workflows/code/build_specialist_message.js` | Main v2 | Build [Niche] Message × 8 (template — 3 constants differ per instance) |
+| `workflows/code/parse_save_all_signals.js` | Main v2 | Parse & Save All Signals |
+| `workflows/code/06_build_orchestrator_input.js` | Main v2 | Build Orchestrator Input |
+| `workflows/code/07_parse_orchestrator_output.js` | Main v2 | Parse Orchestrator Output |
+| `workflows/code/08_prepare_trade_actions.js` | Main v2 | Prepare Trade Actions |
+| `workflows/code/09_process_post_trade.js` | Main v2 | Process Post-Trade |
+| `workflows/code/watchdog_check.js` | Watchdog | Check Signal Flip |
+| `workflows/code/post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
+| `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
+
+_(v1 files 03_prepare_rss_sources.js, 04_build_specialist_inputs.js, 05_parse_specialist_outputs.js — kept for reference, used by v1 backup workflow only)_
 
 Prompts in `/prompts/` are the spec/reference versions. The prompts that actually execute are embedded as constants inside the Code node files above. When editing a prompt, update both.
 
-## Critical: n8n Node Naming
+## Critical: n8n Node Naming (Main Analysis v2)
 
 Code nodes reference each other by exact name via `$("Node Name")`. A typo silently breaks the workflow. Key names:
 
 - `Set Session` — referenced by `02_compute_derived_metrics.js`
 - `Fetch Alpaca Account`, `Fetch Alpaca Positions`, `Fetch Alpaca Open Orders`, `Fetch Price Bars` — referenced by `02`
 - `Load Signal History`, `Load Specialist Accuracy`, `Load Pattern Performance`, `Load Trade Lessons`, `Load Watchlist`, `Load Earnings Calendar`, `Load Correlation Matrix`, `Load Portfolio Snapshots`, `Load Fundamentals Cache` — referenced by `02`
-- `Compute Derived Metrics` — referenced by `04`, `05`, `06`
-- `Attach Feed Niche` — referenced by `04`
-- `Build Specialist Inputs` — referenced by `05`
-- `Parse Specialist Outputs` — referenced by `06`
+- `Compute Derived Metrics` — referenced by `build_specialist_message.js` (8 instances) and `06`
 - `Build Orchestrator Input` — referenced by `07`
 - `Parse Orchestrator Output` — referenced by `09`
 - `Process Post-Trade` — referenced by inline Build Watchlist SQL and Prepare PM Items nodes
@@ -71,9 +70,9 @@ Two different native OpenAI node versions are in use — their output shapes dif
 
 | Node | Version | Output shape |
 |------|---------|-------------|
-| Call Specialist LLM [23] | v1.3 | `{ message: { content: "..." } }` |
-| Call Orchestrator LLM [27] | v2.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
-| Call Post-Mortem LLM [4] | v1.3 | `{ message: { content: "..." } }` |
+| Specialist [Niche] × 8 | v1.3 | `{ message: { content: "..." } }` |
+| Call Orchestrator LLM | v2.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
+| Call Post-Mortem LLM | v1.3 | `{ message: { content: "..." } }` |
 
 ## Risk Rules (hard limits — never override)
 
@@ -117,7 +116,8 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 
 ## Known Open Issues
 
-No open issues. Main Analysis workflow is fully operational as of 2026-05-20 (5 positions live: CCJ, CRWD, MSFT, NVDA, RTX).
+Main Analysis v2 (`l2d06hEvDlfLibms`) — created 2026-05-20, not yet tested. Needs one manual run to verify all 8 specialist branches execute correctly and feed Orchestrator.
+Old v1 (`mHvO6uIh9uwm3Yzg`) — remains as backup; 5 positions live (CCJ, CRWD, MSFT, NVDA, RTX).
 
 ## 8 Niches / 80 Stocks
 

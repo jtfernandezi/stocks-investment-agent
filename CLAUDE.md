@@ -18,11 +18,11 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 ## Three Workflows
 
 **Main Analysis v2** — 3×/day (8:30 AM, 12 PM, 4:30 PM ET) — workflow ID: `l2d06hEvDlfLibms`
-8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger
+8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger. Also has a "When Called by Watchdog" trigger that enters at `Set Session`.
 _(v1 backup: `mHvO6uIh9uwm3Yzg` — batch specialist pipeline, still exists)_
 
-**Watchdog** — every 30 min during market hours
-Fetches Alpaca News for all open position tickers (single API call) → single LLM call assesses each position → detects thesis flips → triggers orchestrator via Execute Workflow. Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
+**Watchdog** — every 30 min during market hours — workflow ID: `7n1bPJ91OkMx3KM4`
+Fetches Alpaca News for all open position tickers (single API call) → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook)
 4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -127,7 +127,7 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 ## Known Open Issues
 
 Main Analysis v2 (`l2d06hEvDlfLibms`) — loop and store bugs fixed 2026-05-20. Needs one live-market run to verify trade execution path (Execute Market Order → Submit Trailing Stop).
-Watchdog v2 — code files complete 2026-05-20. n8n workflow not yet rebuilt; needs linear pipeline: Check Market Open → Fetch Positions → Has Open Positions? → Fetch Alpaca News (URL uses `{{ $('Has Open Positions?').first().json.tickers_csv }}`) → Build News Prompt → LLM (GPT-4o-mini, v1.3) → Parse Flip Response → Execute Workflow (triggers Main v2 if flips detected).
+Watchdog v2 (`7n1bPJ91OkMx3KM4`) — workflow built 2026-05-20, currently inactive. Activate to enable. Needs one live-market test run to verify end-to-end flip detection → Main v2 trigger.
 Old v1 (`mHvO6uIh9uwm3Yzg`) — remains as backup; 5 positions live (CCJ, CRWD, MSFT, NVDA, RTX).
 
 ## 8 Niches / 80 Stocks

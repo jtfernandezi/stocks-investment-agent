@@ -126,20 +126,35 @@ Two different native OpenAI node versions are used — their output shapes diffe
       ↓ TRUE                   ↓ FALSE
 [29] Prepare Trade Actions   [30] Market Closed - End (NoOp)
      (Code: 08_prepare_trade_actions.js)
+     → cash-guarded: BUY/SHORT filtered if size_usd > available cash
      → outputs N items (one per action)
       ↓
-[31] Execute Market Order              (HTTP POST Alpaca /orders — bodyParameters mode)
+[31] Is Closing Position?              (IF: action is SELL or COVER)
+      ↓ TRUE                    ↓ FALSE
+[32a] Close Position          [32b] Execute Market Order
+      (HTTP DELETE                    (HTTP POST /v2/orders
+       /v2/positions/{ticker}          bodyParameters mode)
+       — atomically closes position
+         AND cancels all GTC orders)
+      ↓                         ↓
+      +→ [33] Merge Trade Actions (Merge node, append mode) ←+
+                    ↓
+[34] Restore Trade Context             (Code — re-attaches ticker/action/shares/
+                                        stop_pct_used/needs_trailing_stop from
+                                        Prepare Trade Actions into $json using
+                                        symbol-based matching)
       ↓
-[32] Needs Trailing Stop?              (IF: needs_trailing_stop == true)
+[35] Needs Trailing Stop?              (IF: $json.needs_trailing_stop == true)
       ↓ TRUE               ↓ FALSE
-[33a] Submit Trailing Stop [33b] No Stop Needed (NoOp)
-      ↓ (both branches converge)
-[34] Has Post-Mortems?                 (IF: has_post_mortems == true)
+[36a] Submit Trailing Stop [36b] No Stop Needed (NoOp)
+      (HTTP POST /v2/orders             (trailing_stop, GTC, Math.floor(shares))
+      ↓ (both branches end — no further convergence needed)
+[37] Has Post-Mortems?                 (IF: has_post_mortems == true)
       ↓ TRUE               ↓ FALSE
-[35a] Prepare PM Items     [35b] No PM - End (NoOp)
+[38a] Prepare PM Items     [38b] No PM - End (NoOp)
       (Code inline)
       ↓
-[36] Trigger Post-Mortem              (Execute Workflow — calls Post-Mortem workflow)
+[39] Trigger Post-Mortem              (Execute Workflow — calls Post-Mortem workflow)
 ```
 
 ---
@@ -355,33 +370,68 @@ ON CONFLICT (niche, session) DO UPDATE SET
 ### [29] Prepare Trade Actions
 - Node type: Code (`08_prepare_trade_actions.js`)
 - Outputs one item per `portfolio_action` (BUY / SELL / SHORT / COVER)
-- If no actions: outputs `{ no_trades: true }` — an IF node should filter this before [31]
+- **Cash guard**: BUY/SHORT are skipped if cumulative `size_usd` exceeds `account.cash`; SELL/COVER always pass through
+- If no actions: outputs `{ no_trades: true }` — filtered by `Is Closing Position?` / `Execute Market Order` paths
 
 ---
 
-### [31] Execute Market Order
+### [31] Is Closing Position?
+- Node type: IF
+- Condition: `{{ ['SELL','COVER'].includes($json.action) ? 'true' : 'false' }}` equals `true`
+- TRUE → Close Position
+- FALSE → Execute Market Order
+
+### [32a] Close Position
+- Method: DELETE
+- URL: `={{ 'https://paper-api.alpaca.markets/v2/positions/' + $json.ticker }}`
+- Authentication: Alpaca Trading API credential (Alpaca - Trading)
+- `continueOnFail: true`
+- **Why DELETE instead of market sell**: A GTC trailing stop locks shares — a plain market SELL order returns 422 "insufficient qty available". `DELETE /v2/positions/{ticker}` atomically closes the full position AND cancels all associated GTC orders in one call.
+
+### [32b] Execute Market Order
 - Method: POST
 - URL: `https://paper-api.alpaca.markets/v2/orders`
 - Authentication: Alpaca Trading API credential
 - **Body mode: `bodyParameters` (key-value pairs)** — do NOT use `specifyBody: string` or `json`
-- Fields pulled directly: `$json.order_payload.symbol`, `$json.order_payload.qty`, `$json.order_payload.side`, `$json.order_payload.type`, `$json.order_payload.time_in_force`
+- Fields: `$json.ticker`, `$json.shares` (String), `$json.action` → side mapping, `"market"`, `"day"`
+- Shares: `Math.floor(size_usd / price * 100) / 100` (computed in `07_parse_orchestrator_output.js`)
 
-> For SELL/COVER: share quantity is the actual Alpaca position qty (not recalculated from size_usd). For BUY/SHORT: shares = `Math.floor(size_usd / price * 100) / 100`.
+### [33] Merge Trade Actions
+- Node type: Merge
+- Mode: `append` — outputs all items from Close Position, then all from Execute Market Order
+- 2 inputs: port 0 = Close Position, port 1 = Execute Market Order
+
+### [34] Restore Trade Context
+- Node type: Code
+- Re-attaches `ticker`, `action`, `shares`, `stop_pct_used`, `needs_trailing_stop` from `Prepare Trade Actions` into `$json` after the Alpaca API response overwrote it
+- Uses **symbol-based matching** (not array index) so the merge order doesn't break the lookup:
+  ```js
+  const tradeActions = $('Prepare Trade Actions').all();
+  return $input.all().map((item, index) => {
+    const symbol = item.json?.symbol;
+    const trade = (tradeActions.find(t => t.json?.ticker === symbol) || tradeActions[index] || {}).json || {};
+    return { json: { ...item.json, ticker: trade.ticker, action: trade.action,
+                     shares: trade.shares, stop_pct_used: trade.stop_pct_used,
+                     needs_trailing_stop: trade.needs_trailing_stop } };
+  });
+  ```
 
 ---
 
-### [32] Needs Trailing Stop?
-- Condition: `{{ $json.needs_trailing_stop }}` equals `true`
-- TRUE for BUY and SHORT actions only (not SELL or COVER)
+### [35] Needs Trailing Stop?
+- Condition: `{{ $json.needs_trailing_stop ? 'true' : 'false' }}` equals `true`
+- TRUE for BUY and SHORT actions only (SELL/COVER always → FALSE)
 
-### [33a] Submit Trailing Stop
+### [36a] Submit Trailing Stop
 - Method: POST
 - URL: `https://paper-api.alpaca.markets/v2/orders`
 - Authentication: Alpaca Trading API credential
-- **Body mode: `bodyParameters`** — same approach as Execute Market Order
-- Fields: `$json.trail_stop_payload.*`
-- Trail percent: ATR×2.5 as % of price, clamped 5–15%
-- `time_in_force: gtc` — stays active until triggered or the position is closed
+- **Body mode: `bodyParameters`** — fields from `$json` (populated by Restore Trade Context)
+- `qty`: `{{ String(Math.floor($json.shares)) }}` — **must be whole number**: Alpaca rejects fractional GTC orders
+- `side`: `{{ $json.action === 'BUY' ? 'sell' : 'buy' }}`
+- `trail_percent`: `{{ String($json.stop_pct_used) }}`
+- `time_in_force: gtc` — stays active until triggered or position is closed
+- `continueOnFail: true`
 
 ---
 

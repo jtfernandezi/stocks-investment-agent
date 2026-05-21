@@ -22,7 +22,7 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 _(v1 backup: `mHvO6uIh9uwm3Yzg` — batch specialist pipeline, still exists)_
 
 **Watchdog** — every 30 min during market hours
-Runs fresh specialist analysis (news-only, 8 niches) → detects thesis flips on open positions → triggers orchestrator via Execute Workflow. Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
+Fetches Alpaca News for all open position tickers (single API call) → single LLM call assesses each position → detects thesis flips → triggers orchestrator via Execute Workflow. Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook)
 4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -41,10 +41,12 @@ Runs fresh specialist analysis (news-only, 8 niches) → detects thesis flips on
 | `workflows/code/09_process_post_trade.js` | Main v2 | Process Post-Trade |
 | `workflows/code/watchdog_check_market.js` | Watchdog | Check Market Open |
 | `workflows/code/watchdog_has_open_positions.js` | Watchdog | Has Open Positions? |
-| `workflows/code/watchdog_build_message.js` | Watchdog | Build [Niche] Watchdog Message × 8 (template — 3 constants differ per instance) |
-| `workflows/code/watchdog_tag_signal.js` | Watchdog | Tag [Niche] Watchdog Signal × 8 (template — 1 constant differs per instance) |
-| `workflows/code/watchdog_compare_signals.js` | Watchdog | Compare Watchdog Signals |
+| `workflows/code/watchdog_build_news_prompt.js` | Watchdog | Build News Prompt |
+| `workflows/code/watchdog_parse_flip.js` | Watchdog | Parse Flip Response |
 | `workflows/code/watchdog_check.js` | _(deprecated — old watchdog, closes blindly without orchestrator)_ | — |
+| `workflows/code/watchdog_build_message.js` | _(deprecated — superseded by watchdog_build_news_prompt.js)_ | — |
+| `workflows/code/watchdog_tag_signal.js` | _(deprecated — no longer needed, single LLM call replaces 8 branches)_ | — |
+| `workflows/code/watchdog_compare_signals.js` | _(deprecated — superseded by watchdog_parse_flip.js)_ | — |
 | `workflows/code/post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
 | `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
 
@@ -67,7 +69,7 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 - `Load Signals During Hold` — referenced by `post_mortem_build_input.js`
 - `Build Post-Mortem Input` — referenced by `post_mortem_store.js`
 - `Fetch Latest Signals`, `Fetch Open Positions` — referenced by `watchdog_check.js` _(deprecated)_
-- `Has Open Positions?` — referenced by `watchdog_compare_signals.js`
+- `Has Open Positions?` — referenced by `watchdog_build_news_prompt.js`
 
 ## Critical: OpenAI Node Versions
 
@@ -125,7 +127,7 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 ## Known Open Issues
 
 Main Analysis v2 (`l2d06hEvDlfLibms`) — loop and store bugs fixed 2026-05-20. Needs one live-market run to verify trade execution path (Execute Market Order → Submit Trailing Stop).
-Watchdog v2 — code files complete 2026-05-20. n8n workflow not yet rebuilt; needs all 8 specialist branches wired per new design (RSS → Merge → Build Watchdog Message → LLM → Tag Signal → merge tree → Compare Signals → Execute Workflow).
+Watchdog v2 — code files complete 2026-05-20. n8n workflow not yet rebuilt; needs linear pipeline: Check Market Open → Fetch Positions → Has Open Positions? → Fetch Alpaca News (URL uses `{{ $('Has Open Positions?').first().json.tickers_csv }}`) → Build News Prompt → LLM (GPT-4o-mini, v1.3) → Parse Flip Response → Execute Workflow (triggers Main v2 if flips detected).
 Old v1 (`mHvO6uIh9uwm3Yzg`) — remains as backup; 5 positions live (CCJ, CRWD, MSFT, NVDA, RTX).
 
 ## 8 Niches / 80 Stocks

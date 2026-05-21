@@ -22,8 +22,7 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 _(v1 backup: `mHvO6uIh9uwm3Yzg` — batch specialist pipeline, still exists)_
 
 **Watchdog** — every 30 min during market hours
-Detects thesis-flip on open positions → closes via `DELETE /positions/{ticker}` → triggers post-mortem
-Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders)
+Runs fresh specialist analysis (news-only, 8 niches) → detects thesis flips on open positions → triggers orchestrator via Execute Workflow. Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook)
 4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -40,7 +39,12 @@ Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders)
 | `workflows/code/07_parse_orchestrator_output.js` | Main v2 | Parse Orchestrator Output |
 | `workflows/code/08_prepare_trade_actions.js` | Main v2 | Prepare Trade Actions |
 | `workflows/code/09_process_post_trade.js` | Main v2 | Process Post-Trade |
-| `workflows/code/watchdog_check.js` | Watchdog | Check Signal Flip |
+| `workflows/code/watchdog_check_market.js` | Watchdog | Check Market Open |
+| `workflows/code/watchdog_has_open_positions.js` | Watchdog | Has Open Positions? |
+| `workflows/code/watchdog_build_message.js` | Watchdog | Build [Niche] Watchdog Message × 8 (template — 3 constants differ per instance) |
+| `workflows/code/watchdog_tag_signal.js` | Watchdog | Tag [Niche] Watchdog Signal × 8 (template — 1 constant differs per instance) |
+| `workflows/code/watchdog_compare_signals.js` | Watchdog | Compare Watchdog Signals |
+| `workflows/code/watchdog_check.js` | _(deprecated — old watchdog, closes blindly without orchestrator)_ | — |
 | `workflows/code/post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
 | `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
 
@@ -62,7 +66,8 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 - `Workflow Trigger` — referenced by `post_mortem_build_input.js`
 - `Load Signals During Hold` — referenced by `post_mortem_build_input.js`
 - `Build Post-Mortem Input` — referenced by `post_mortem_store.js`
-- `Fetch Latest Signals`, `Fetch Open Positions` — referenced by `watchdog_check.js`
+- `Fetch Latest Signals`, `Fetch Open Positions` — referenced by `watchdog_check.js` _(deprecated)_
+- `Has Open Positions?` — referenced by `watchdog_compare_signals.js`
 
 ## Critical: OpenAI Node Versions
 
@@ -89,9 +94,12 @@ Two different native OpenAI node versions are in use — their output shapes dif
 
 - **Shares calculation**: always recalculated from live price in `07_parse_orchestrator_output.js` — the LLM's share count is ignored (it uses stale prices)
 - **SQL injection**: all LLM-generated text goes through `sqlEsc = s => s.replace(/'/g, "''")` before string interpolation in every Postgres query
-- **Price bars**: fetched in 9 parallel HTTP nodes (one per niche + SPY), each 10 symbols × 252 bars. A Code node `Fetch Price Bars` merges all 9 responses into `{bars: {...}}` — `02_compute_derived_metrics.js` reads from this node by name unchanged. Do NOT revert to a single URL fetch — that caused pagination (only 30 bars total returned).
+- **Price bars**: fetched in 9 parallel HTTP nodes (one per niche + SPY), each 10 symbols × 252 bars. A `Merge Price Bars` Merge node (with `numberInputs: 9` and each HTTP node on a distinct port index 0–8) aggregates them before a Code node `Fetch Price Bars` merges all 9 responses into `{bars: {...}}`. Do NOT connect the 9 HTTP nodes directly to the Code node — each trigger fires the Code node separately, causing the entire pipeline to run 9 times.
+- **Merge nodes with multiple inputs**: must set `numberInputs: N` and wire each upstream node to a distinct port index 0..N-1. Without this, the Merge node fires after 2 items (default) instead of waiting for all N.
+- **Store All Signals node**: set `alwaysOutputData: true` — an `INSERT` without `RETURNING` returns 0 rows; n8n sees no output and stops execution. The SQL also uses `ON CONFLICT (niche, session) DO UPDATE SET ...` to upsert (overwrite stale signals on re-runs).
+- **specialist_signals table**: has a `UNIQUE (niche, session)` constraint. The upsert ensures exactly 1 canonical row per niche/session slot.
 - **Post-mortem trigger**: uses Execute Workflow node (workflow-to-workflow), NOT an HTTP webhook
-- **Watchdog close**: uses `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders
+- **Watchdog flip response**: when `watchdog_compare_signals.js` detects a flip, it outputs flip context and triggers the orchestrator via Execute Workflow. The orchestrator (not the watchdog) decides whether to close or hold the position. Emergency manual close is still possible via `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders.
 
 ## Price Bar Fetch Nodes (9 HTTP + 1 Code)
 
@@ -116,7 +124,8 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 
 ## Known Open Issues
 
-Main Analysis v2 (`l2d06hEvDlfLibms`) — created 2026-05-20, not yet tested. Needs one manual run to verify all 8 specialist branches execute correctly and feed Orchestrator.
+Main Analysis v2 (`l2d06hEvDlfLibms`) — loop and store bugs fixed 2026-05-20. Needs one live-market run to verify trade execution path (Execute Market Order → Submit Trailing Stop).
+Watchdog v2 — code files complete 2026-05-20. n8n workflow not yet rebuilt; needs all 8 specialist branches wired per new design (RSS → Merge → Build Watchdog Message → LLM → Tag Signal → merge tree → Compare Signals → Execute Workflow).
 Old v1 (`mHvO6uIh9uwm3Yzg`) — remains as backup; 5 positions live (CCJ, CRWD, MSFT, NVDA, RTX).
 
 ## 8 Niches / 80 Stocks

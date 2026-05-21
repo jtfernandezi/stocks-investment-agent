@@ -80,6 +80,17 @@ Two different native OpenAI node versions are in use — their output shapes dif
 | Call Orchestrator LLM | v2.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
 | Call Post-Mortem LLM | v1.3 | `{ message: { content: "..." } }` |
 
+## Trade Actions
+
+| Action | Meaning | Alpaca `side` |
+|--------|---------|--------------|
+| BUY | Open a long position | `buy` |
+| SELL | Close a long position | `sell` |
+| SHORT | Open a short position | `sell` (Alpaca auto-detects short when no existing position) |
+| COVER | Close a short position (buy back borrowed shares) | `buy` |
+
+BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a short."
+
 ## Risk Rules (hard limits — never override)
 
 - Only HIGH conviction + effective_confidence ≥ 0.75 triggers trades

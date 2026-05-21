@@ -1,95 +1,195 @@
-# Workflow 2 — Watchdog Blueprint
+# Workflow 2 — Watchdog Blueprint (v2)
 
 Runs every 30 minutes, Monday–Friday, market hours only (9:30 AM–4:00 PM ET).
-Single responsibility: detect thesis-flip signals and close affected positions.
-Trailing stop monitoring is handled entirely by Alpaca — this workflow does NOT check prices.
+Single responsibility: detect thesis-changing news for open positions and trigger the orchestrator to decide whether to close.
+Trailing stop monitoring is handled entirely by Alpaca natively — this workflow does NOT check prices.
 
-## Why this is simple
+## Why v2 is different from v1
 
-In v1 (ETF project), the watchdog checked high-watermarks and price proximity.
-Here, Alpaca handles trailing stops natively. The watchdog only needs to:
-1. Load the latest specialist signal per niche
-2. Load open positions
-3. For each position, check if the specialist has flipped direction
-4. If yes → close the position via Alpaca market order
-5. If yes → trigger post-mortem webhook
+v1 loaded sector RSS feeds and compared signals across sessions.
+v2 uses Alpaca's News API to fetch breaking headlines for the exact tickers we hold, then makes a single LLM call to assess whether any headline materially changes a position's thesis. This is faster, more precise, and doesn't duplicate the specialist analysis already running 3×/day.
+
+## Entry condition
+
+The watchdog only proceeds if:
+1. Market is currently open (between 9:30 AM–4:00 PM ET)
+2. We have at least one open Alpaca position in our 80-stock universe
+
+Both are checked via IF nodes that route to named terminal (NoOp) nodes — always a finished state.
 
 ## Node map
 
 ```
-[1] Schedule Trigger (every 30 min, market hours)
+[1]  Schedule Trigger (every 30 min, weekdays)
       ↓
-[2] Fetch Latest Signals               (Postgres SELECT — most recent per niche)
+[2]  Check Market Open            (Code: watchdog_check_market.js)
       ↓
-[3] Fetch Open Positions               (HTTP GET Alpaca /positions)
+[3]  Is Market Open?              (IF: $json.market_open ? 'true' : 'false' equals 'true')
+      ↓ TRUE                         ↓ FALSE
+[4]  Fetch Alpaca Positions       [N1] Market Closed - Done (NoOp)
+     (HTTP GET /positions)
       ↓
-[4] Check Signal Flip                  (Code: watchdog_check.js)
-      → outputs: positions to close (or sentinel {no_flips_detected: true})
+[5]  Has Open Positions?          (Code: watchdog_has_open_positions.js)
       ↓
-[5] Has Flips?                         (IF: no_flips_detected is NOT true)
-      ↓ TRUE             ↓ FALSE
-[6] Close Position    [7] No Flips - End
-    (HTTP DELETE Alpaca /positions/{ticker})
+[6]  Positions in Universe?       (IF: $json.has_positions ? 'true' : 'false' equals 'true')
+      ↓ TRUE                         ↓ FALSE
+[7]  Fetch Alpaca News            [N2] No Positions - Done (NoOp)
+     (HTTP GET /v1beta1/news?symbols={{ $json.tickers_csv }}&limit=10&sort=desc)
       ↓
-[8] Trigger Post-Mortem                (Execute Workflow — calls Post-Mortem workflow by ID)
+[8]  Build News Prompt            (Code: watchdog_build_news_prompt.js)
+      ↓
+[9]  Call Watchdog LLM           (Native OpenAI node v1.3 — GPT-4o-mini)
+      ↓
+[10] Parse Flip Response         (Code: watchdog_parse_flip.js)
+      ↓
+[11] Thesis Flip Detected?       (IF: $json.flips_detected ? 'true' : 'false' equals 'true')
+      ↓ TRUE                         ↓ FALSE
+[12] Trigger Main v2             [N3] No Flips - Done (NoOp)
+     (Execute Workflow — "When Called by Watchdog" entry point)
+      ↓
+[N4] Watchdog Done (NoOp)
 ```
 
-> **Node naming note**: `watchdog_check.js` references nodes by exact name:
-> - `$("Fetch Latest Signals")` → node [2] — must match exactly
-> - `$("Fetch Open Positions")` → node [3] — must match exactly
-> 
-> Node [8] triggers the Post-Mortem workflow via **Execute Workflow** (not HTTP POST). No webhook URL needed.
+> **Node naming note**: `watchdog_build_news_prompt.js` reads positions via `$("Has Open Positions?")` — this name must match exactly.
+
+---
 
 ## Node configurations
 
 ### [1] Schedule Trigger
-Cron expressions (EDT, UTC-4):
-- `*/30 13-20 * * 1-5` → every 30 min from 9:00 AM to 4:00 PM UTC (5 AM–12 PM ET)
+- Mode: Cron
+- Expression: `*/30 * * * 1-5` (every 30 min, weekdays — market hours enforced by [2])
 
-More precisely, limit to market hours:
-- `30 13 * * 1-5`  → 9:30 AM ET (market open)
-- `0 14 * * 1-5`
-- `30 14 * * 1-5`
-- ... (one trigger per 30-min slot, 9:30 AM – 4:00 PM ET = 13 triggers)
+---
 
-Or use: `*/30 13-20 * * 1-5` with a Code node that checks exact time and skips if outside 9:30–16:00 ET.
+### [2] Check Market Open
+- Node type: Code (`watchdog_check_market.js`)
+- Output: `{ market_open: true | false, checked_at, reason? }`
+- Market hours: 9:30 AM–4:00 PM ET (13:30–20:00 UTC)
 
-### [2] Fetch Latest Signals
-Node name: **`Fetch Latest Signals`** (exact — referenced by `watchdog_check.js`)
+---
 
-```sql
-SELECT DISTINCT ON (niche)
-  niche, direction, conviction, confidence, created_at
-FROM stocks.specialist_signals
-ORDER BY niche, created_at DESC;
+### [3] Is Market Open?
+- Node type: IF
+- Condition: `{{ $json.market_open ? 'true' : 'false' }}` equals `true`
+- TRUE → Fetch Alpaca Positions
+- FALSE → Market Closed - Done (NoOp)
+
+---
+
+### [4] Fetch Alpaca Positions
+- Method: GET
+- URL: `https://paper-api.alpaca.markets/v2/positions`
+- Authentication: Alpaca Trading API credential
+- Response format: JSON
+
+---
+
+### [5] Has Open Positions?
+- Node type: Code (`watchdog_has_open_positions.js`)
+- Output on positions found: `{ has_positions: true, open_niches, positions_by_niche, position_count, tickers_csv, raw_positions }`
+- Output when none: `{ has_positions: false, reason }`
+- `tickers_csv` is used in the Fetch Alpaca News URL query string
+- `raw_positions` is used by `watchdog_build_news_prompt.js` to show position context to the LLM
+
+---
+
+### [6] Positions in Universe?
+- Node type: IF
+- Condition: `{{ $json.has_positions ? 'true' : 'false' }}` equals `true`
+- TRUE → Fetch Alpaca News
+- FALSE → No Positions - Done (NoOp)
+
+---
+
+### [7] Fetch Alpaca News
+- Method: GET
+- URL expression: `https://data.alpaca.markets/v1beta1/news?symbols={{ $json.tickers_csv }}&limit=10&sort=desc`
+- Authentication: Alpaca Data API credential (same keys as trading API)
+- Response format: JSON
+- Returns: `{ news: [...], next_page_token }` — articles have `headline`, `symbols[]`, `created_at`; `content`/`summary` are empty on free tier
+
+---
+
+### [8] Build News Prompt
+- Node type: Code (`watchdog_build_news_prompt.js`)
+- Reads positions from `$("Has Open Positions?").first().json.raw_positions`
+- Groups articles by ticker using `symbols[]` array on each article
+- Output: `{ system_prompt, user_prompt }` for the LLM
+
+---
+
+### [9] Call Watchdog LLM
+- Node type: **Native OpenAI node v1.3**
+- Model: `gpt-4o-mini`
+- System prompt: `{{ $json.system_prompt }}`
+- User prompt: `{{ $json.user_prompt }}`
+- Temperature: 0.2
+- Max tokens: 1000
+- Response format: JSON object
+- Output shape: `{ message: { content: "..." } }` (v1.3 native format)
+
+---
+
+### [10] Parse Flip Response
+- Node type: Code (`watchdog_parse_flip.js`)
+- Flip threshold: `thesis_intact === false AND confidence ≥ 0.60 AND materiality !== 'LOW'`
+- Output on flips: `{ flips_detected: true, flips, flip_count, trigger_reason, session_type: 'watchdog_flip' }`
+- Output on no flips: `{ flips_detected: false, checked_at, llm_summary }`
+
+---
+
+### [11] Thesis Flip Detected?
+- Node type: IF
+- Condition: `{{ $json.flips_detected ? 'true' : 'false' }}` equals `true`
+- TRUE → Trigger Main v2
+- FALSE → No Flips - Done (NoOp)
+
+---
+
+### [12] Trigger Main v2
+- Node type: **Execute Workflow**
+- Target workflow: Main Analysis v2 (ID: `l2d06hEvDlfLibms`)
+- Entry point: **"When Called by Watchdog"** (Execute Workflow Trigger node)
+- Passes flip context as input — the orchestrator receives `session_type: 'watchdog_flip'` and decides whether to close or hold each flagged position
+- The watchdog does NOT close positions directly — it delegates to the orchestrator
+
+---
+
+### Terminal (NoOp) nodes
+All four terminal nodes are `n8n-nodes-base.noOp`. Name them descriptively:
+- `Market Closed - Done`
+- `No Positions - Done`
+- `No Flips - Done`
+- `Watchdog Done`
+
+---
+
+## LLM output format expected by Parse Flip Response
+
+```json
+{
+  "position_assessments": [
+    {
+      "ticker": "NVDA",
+      "side": "LONG",
+      "thesis_intact": true,
+      "direction": "BULLISH",
+      "confidence": 0.72,
+      "materiality": "HIGH | MEDIUM | LOW",
+      "key_headline": "The single most relevant headline, or null if none",
+      "reasoning": "1-2 sentences"
+    }
+  ],
+  "summary": "1 sentence — overall finding"
+}
 ```
 
-### [3] Fetch Open Positions
-Node name: **`Fetch Open Positions`** (exact — referenced by `watchdog_check.js`)
-- GET `https://paper-api.alpaca.markets/v2/positions`
-- Enable "Full Response" mode: the code handles both `$json.body` (array) and individual items
+---
 
-### [5] Has Flips?
-Node name: **`Has Flips?`** (exact)
-- IF node
-- Condition: `{{ $json.no_flips_detected }}` is not `true`
-  (watchdog_check.js returns `{ items_to_close: 0, no_flips_detected: true }` when nothing to close)
-- TRUE branch → Close Position
-- FALSE branch → No Flips - End
+## What the watchdog does NOT do
 
-### [6] Close Position
-Node name: **`Close Position`**
-
-Use Alpaca's atomic close-position endpoint — closes position AND cancels all associated orders in one call:
-- Method: DELETE
-- URL: `https://paper-api.alpaca.markets/v2/positions/{{ $json.ticker }}`
-- Authentication: Alpaca Trading API credential
-
-### [7] No Flips - End
-Node name: **`No Flips - End`** — noOp node, terminates the FALSE branch.
-
-### [8] Trigger Post-Mortem
-Node name: **`Trigger Post-Mortem`**
-- Node type: **Execute Workflow** (not HTTP Request)
-- Calls the Post-Mortem workflow directly by ID
-- Passes the full watchdog close context as input
+- Does not check prices or stop proximity — Alpaca GTC trailing stops handle that natively
+- Does not close positions directly — sends flip context to the orchestrator, which decides
+- Does not run the full 8-specialist analysis — a single news-focused LLM call is enough
+- Emergency manual close (outside the watchdog) via Alpaca: `DELETE /v2/positions/{ticker}` closes the position AND cancels all associated orders atomically

@@ -745,7 +745,7 @@
           "conditions": [
             {
               "id": "7e745f13-02ab-499a-856a-f028ac1e3606",
-              "leftValue": "={{ $('Prepare Trade Actions').item.json.needs_trailing_stop ? 'true' : 'false' }}",
+              "leftValue": "={{ $('Prepare Trade Actions').all()[$itemIndex].json.needs_trailing_stop ? 'true' : 'false' }}",
               "rightValue": "true",
               "operator": {
                 "type": "string",
@@ -786,15 +786,15 @@
           "parameters": [
             {
               "name": "symbol",
-              "value": "={{ $('Prepare Trade Actions').item.json.ticker }}"
+              "value": "={{ $('Prepare Trade Actions').all()[$itemIndex].json.ticker }}"
             },
             {
               "name": "qty",
-              "value": "={{ String(Math.floor($('Prepare Trade Actions').item.json.shares)) }}"
+              "value": "={{ String(Math.floor($('Prepare Trade Actions').all()[$itemIndex].json.shares)) }}"
             },
             {
               "name": "side",
-              "value": "={{ $('Prepare Trade Actions').item.json.action === 'BUY' ? 'sell' : 'buy' }}"
+              "value": "={{ $('Prepare Trade Actions').all()[$itemIndex].json.action === 'BUY' ? 'sell' : 'buy' }}"
             },
             {
               "name": "type",
@@ -802,7 +802,7 @@
             },
             {
               "name": "trail_percent",
-              "value": "={{ String($('Prepare Trade Actions').item.json.stop_pct_used) }}"
+              "value": "={{ String($('Prepare Trade Actions').all()[$itemIndex].json.stop_pct_used) }}"
             },
             {
               "name": "time_in_force",

@@ -2101,7 +2101,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Merge Alpaca response back with original trade action data.\n// Execute Market Order overwrites $json with the Alpaca API response, losing\n// needs_trailing_stop, ticker, shares, action, stop_pct_used.\n// We re-attach them here by position so downstream nodes use plain $json.\nconst tradeActions = $('Prepare Trade Actions').all();\nreturn $input.all().map((item, index) => {\n  const trade = tradeActions[index]?.json || {};\n  return {\n    json: {\n      ...item.json,\n      ticker:               trade.ticker,\n      action:               trade.action,\n      shares:               trade.shares,\n      stop_pct_used:        trade.stop_pct_used,\n      needs_trailing_stop:  trade.needs_trailing_stop,\n    }\n  };\n});"
+        "jsCode": "// Re-attach trade action fields after Execute Market Order / Close Position\n// overwrote $json with the Alpaca API response.\n// Match by symbol (order-independent) so branch merges don't break indexing.\nconst tradeActions = $('Prepare Trade Actions').all();\nreturn $input.all().map((item, index) => {\n  const symbol = item.json?.symbol;\n  const trade = (tradeActions.find(t => t.json?.ticker === symbol) || tradeActions[index] || {}).json || {};\n  return {\n    json: {\n      ...item.json,\n      ticker:              trade.ticker,\n      action:              trade.action,\n      shares:              trade.shares,\n      stop_pct_used:       trade.stop_pct_used,\n      needs_trailing_stop: trade.needs_trailing_stop,\n    }\n  };\n});"
       },
       "id": "a88e9616-5f00-4feb-b880-e76371199712",
       "name": "Restore Trade Context",
@@ -2109,6 +2109,87 @@
       "typeVersion": 2,
       "position": [
         8296,
+        -1712
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "908ca727-8c79-42fb-8b2d-0c72b96882d9",
+              "leftValue": "={{ ['SELL','COVER'].includes($json.action) ? 'true' : 'false' }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cd534f05-b80e-4a75-b3a6-7c66b41571ef",
+      "name": "Is Closing Position?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        8076,
+        -1712
+      ]
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ 'https://paper-api.alpaca.markets/v2/positions/' + $json.ticker }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "APCA-API-SECRET-KEY",
+              "value": "36XH6Zs52M9GcZzKzTXX23Ve3qP5quxGKz31KDzvRpfg"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "sN2nMlhkeeHCYNaw",
+          "name": "Alpaca - Trading"
+        }
+      },
+      "continueOnFail": true,
+      "id": "73189c1d-347f-4553-b7af-36a94d2ab502",
+      "name": "Close Position",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        8192,
+        -1860
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "append"
+      },
+      "id": "ddf7d2e5-05eb-4772-b974-f2781672730a",
+      "name": "Merge Trade Actions",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        8400,
         -1712
       ]
     }
@@ -2524,7 +2605,7 @@
       "main": [
         [
           {
-            "node": "Execute Market Order",
+            "node": "Is Closing Position?",
             "type": "main",
             "index": 0
           }
@@ -2535,9 +2616,9 @@
       "main": [
         [
           {
-            "node": "Restore Trade Context",
+            "node": "Merge Trade Actions",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -3421,6 +3502,46 @@
         [
           {
             "node": "Needs Trailing Stop?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Closing Position?": {
+      "main": [
+        [
+          {
+            "node": "Close Position",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Market Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Close Position": {
+      "main": [
+        [
+          {
+            "node": "Merge Trade Actions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Trade Actions": {
+      "main": [
+        [
+          {
+            "node": "Restore Trade Context",
             "type": "main",
             "index": 0
           }

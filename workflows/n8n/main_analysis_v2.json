@@ -745,7 +745,7 @@
           "conditions": [
             {
               "id": "7e745f13-02ab-499a-856a-f028ac1e3606",
-              "leftValue": "={{ $('Prepare Trade Actions').all()[$itemIndex].json.needs_trailing_stop ? 'true' : 'false' }}",
+              "leftValue": "={{ $json.needs_trailing_stop ? 'true' : 'false' }}",
               "rightValue": "true",
               "operator": {
                 "type": "string",
@@ -786,15 +786,15 @@
           "parameters": [
             {
               "name": "symbol",
-              "value": "={{ $('Prepare Trade Actions').all()[$itemIndex].json.ticker }}"
+              "value": "={{ $json.ticker }}"
             },
             {
               "name": "qty",
-              "value": "={{ String(Math.floor($('Prepare Trade Actions').all()[$itemIndex].json.shares)) }}"
+              "value": "={{ String(Math.floor($json.shares)) }}"
             },
             {
               "name": "side",
-              "value": "={{ $('Prepare Trade Actions').all()[$itemIndex].json.action === 'BUY' ? 'sell' : 'buy' }}"
+              "value": "={{ $json.action === 'BUY' ? 'sell' : 'buy' }}"
             },
             {
               "name": "type",
@@ -802,7 +802,7 @@
             },
             {
               "name": "trail_percent",
-              "value": "={{ String($('Prepare Trade Actions').all()[$itemIndex].json.stop_pct_used) }}"
+              "value": "={{ String($json.stop_pct_used) }}"
             },
             {
               "name": "time_in_force",
@@ -2098,6 +2098,19 @@
         -816
       ],
       "parameters": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge Alpaca response back with original trade action data.\n// Execute Market Order overwrites $json with the Alpaca API response, losing\n// needs_trailing_stop, ticker, shares, action, stop_pct_used.\n// We re-attach them here by position so downstream nodes use plain $json.\nconst tradeActions = $('Prepare Trade Actions').all();\nreturn $input.all().map((item, index) => {\n  const trade = tradeActions[index]?.json || {};\n  return {\n    json: {\n      ...item.json,\n      ticker:               trade.ticker,\n      action:               trade.action,\n      shares:               trade.shares,\n      stop_pct_used:        trade.stop_pct_used,\n      needs_trailing_stop:  trade.needs_trailing_stop,\n    }\n  };\n});"
+      },
+      "id": "a88e9616-5f00-4feb-b880-e76371199712",
+      "name": "Restore Trade Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8296,
+        -1712
+      ]
     }
   ],
   "connections": {
@@ -2522,7 +2535,7 @@
       "main": [
         [
           {
-            "node": "Needs Trailing Stop?",
+            "node": "Restore Trade Context",
             "type": "main",
             "index": 0
           }
@@ -3397,6 +3410,17 @@
         [
           {
             "node": "Set Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Trade Context": {
+      "main": [
+        [
+          {
+            "node": "Needs Trailing Stop?",
             "type": "main",
             "index": 0
           }

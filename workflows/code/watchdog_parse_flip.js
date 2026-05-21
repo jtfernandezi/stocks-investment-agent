@@ -12,7 +12,7 @@ try {
   const jsonMatch = content.match(/\{[\s\S]*\}/);
   parsed = JSON.parse(jsonMatch ? jsonMatch[0] : content);
 } catch (e) {
-  return [];  // parse error → treat as no flips → stop execution
+  return [{ json: { flips_detected: false, reason: 'LLM parse error', checked_at: new Date().toISOString() } }];
 }
 
 const assessments = parsed.position_assessments || [];
@@ -24,10 +24,13 @@ const flips = assessments.filter(a =>
   a.materiality !== 'LOW'
 );
 
-if (flips.length === 0) return [];
+if (flips.length === 0) {
+  return [{ json: { flips_detected: false, checked_at: new Date().toISOString(), llm_summary: parsed.summary || null } }];
+}
 
 return [{
   json: {
+    flips_detected: true,
     flip_count:     flips.length,
     flips,
     checked_at:     new Date().toISOString(),

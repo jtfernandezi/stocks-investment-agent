@@ -33,7 +33,9 @@ const positions = Array.isArray(raw) ? raw
                 : Array.isArray(raw && raw.body) ? raw.body
                 : [];
 
-if (positions.length === 0) return [];
+if (positions.length === 0) {
+  return [{ json: { has_positions: false, reason: 'No open Alpaca positions' } }];
+}
 
 const byNiche = {};
 for (const pos of positions) {
@@ -46,12 +48,15 @@ for (const pos of positions) {
 }
 
 const openNiches      = Object.keys(byNiche);
-if (openNiches.length === 0) return [];
+if (openNiches.length === 0) {
+  return [{ json: { has_positions: false, reason: 'No positions in our 80-stock universe' } }];
+}
 
 const openPositions   = positions.filter(p => TICKER_NICHE[p.symbol]);
 const tickers         = openPositions.map(p => p.symbol);
 
 return [{ json: {
+  has_positions:      true,
   open_niches:        openNiches,
   positions_by_niche: byNiche,
   position_count:     positions.length,

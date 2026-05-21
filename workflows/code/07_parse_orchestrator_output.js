@@ -39,13 +39,22 @@ const enrichedActions = (parsed.portfolio_actions || []).map(action => {
   const price     = priceMap[ticker] ? priceMap[ticker].current : null;
   const stopPct   = action.stop_loss_pct || (priceMap[ticker] ? priceMap[ticker].trail_pct : 8);
 
-  // Always recalculate shares from actual current price — LLM often assumes a stale price
-  // and its share count can be way off. Ignore action.shares entirely.
+  // For SELL/COVER: use actual Alpaca position qty to guarantee full close.
+  // For BUY/SHORT: calculate from size_usd + live price (LLM's share count uses stale prices).
   let shares = null;
-  if (price && action.size_usd) {
-    shares = Math.floor(action.size_usd / price * 100) / 100;  // round down to 2 decimals
-  } else if (action.shares) {
-    shares = action.shares;  // last resort: use LLM value only when price is unavailable
+  const position = (state.positions || []).find(p => p.symbol === ticker);
+  if (action.action === 'SELL' || action.action === 'COVER') {
+    if (position) {
+      shares = Math.abs(parseFloat(position.qty));
+    } else if (price && action.size_usd) {
+      shares = Math.floor(action.size_usd / price * 100) / 100;
+    }
+  } else {
+    if (price && action.size_usd) {
+      shares = Math.floor(action.size_usd / price * 100) / 100;  // round down to 2 decimals
+    } else if (action.shares) {
+      shares = action.shares;  // last resort: use LLM value only when price is unavailable
+    }
   }
 
   // Market order payload for Alpaca
@@ -152,6 +161,7 @@ return [{
     closing_positions:  closedPositions,
     opening_positions:  openingActions,
     post_mortem_payloads: postMortemPayloads,
+    open_positions:     state.positions || [],  // Alpaca positions list (used by 09 for long/short split)
 
     // For Neon snapshot
     session_id:   orchInput.portfolio_state.session_id,

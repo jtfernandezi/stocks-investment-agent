@@ -112,6 +112,10 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 - **specialist_signals table**: has a `UNIQUE (niche, session)` constraint. The upsert ensures exactly 1 canonical row per niche/session slot.
 - **Post-mortem trigger**: uses Execute Workflow node (workflow-to-workflow), NOT an HTTP webhook
 - **Watchdog flip response**: when `watchdog_compare_signals.js` detects a flip, it outputs flip context and triggers the orchestrator via Execute Workflow. The orchestrator (not the watchdog) decides whether to close or hold the position. Emergency manual close is still possible via `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders.
+- **SELL/COVER execution**: uses `DELETE /v2/positions/{ticker}` (not a market sell order). This atomically closes the position AND cancels all associated GTC orders in one call. A GTC trailing stop locks shares, so a plain market SELL will be rejected with "insufficient qty available" if a stop is already attached. The `Is Closing Position?` IF node routes SELL/COVER to `Close Position` (HTTP DELETE) and BUY/SHORT to `Execute Market Order` (HTTP POST). Both merge back at `Merge Trade Actions` before `Restore Trade Context`.
+- **Restore Trade Context**: Code node between Merge Trade Actions and Needs Trailing Stop?. Re-attaches `ticker`, `action`, `shares`, `stop_pct_used`, `needs_trailing_stop` from Prepare Trade Actions into `$json` after the Alpaca response overwrites it. Uses symbol-based matching (not array index) so branch-merge ordering doesn't matter.
+- **Cash guard in Prepare Trade Actions**: BUY/SHORT orders are filtered if cumulative `size_usd` exceeds `account.cash`. SELL/COVER always pass through. Prevents the orchestrator from over-deploying when cash is tight.
+- **Trailing stop shares**: `Math.floor()` applied to share qty — Alpaca rejects fractional GTC trailing stop orders with 422.
 
 ## Price Bar Fetch Nodes (9 HTTP + 1 Code)
 
@@ -132,12 +136,13 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 
 ## Key Implementation Details — Execute Market Order
 
-The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyParameters`** (n8n key-value pairs mode), NOT `specifyBody: "string"` or `specifyBody: "json"`. This is the only approach that sends a correctly structured JSON body to Alpaca. The `order_payload` / `trail_stop_payload` objects in `$json` are kept for debug logging but the HTTP nodes pull fields directly: `$json.ticker`, `$json.shares`, `$json.action`, `$json.stop_pct_used`.
+The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyParameters`** (n8n key-value pairs mode), NOT `specifyBody: "string"` or `specifyBody: "json"`. This is the only approach that sends a correctly structured JSON body to Alpaca. After `Restore Trade Context` re-attaches trade fields, `Submit Trailing Stop` reads directly from `$json.ticker`, `$json.shares`, `$json.action`, `$json.stop_pct_used`.
 
 ## Known Open Issues
 
-Main Analysis v2 (`l2d06hEvDlfLibms`) — loop and store bugs fixed 2026-05-20. Needs one live-market run to verify trade execution path (Execute Market Order → Submit Trailing Stop).
-Watchdog v2 (`7n1bPJ91OkMx3KM4`) — workflow built 2026-05-20, currently inactive. Activate to enable. Needs one live-market test run to verify end-to-end flip detection → Main v2 trigger.
+Main Analysis v2 (`l2d06hEvDlfLibms`) — live-tested 2026-05-21. BUY path and trailing stop routing verified. SELL/COVER path fixed (uses DELETE /v2/positions/{ticker}) but not yet tested end-to-end — first clean SELL will also trigger post-mortem for the first time.
+Watchdog v2 (`7n1bPJ91OkMx3KM4`) — built 2026-05-20, currently inactive. Activate to enable. Needs one live-market test run to verify end-to-end flip detection → Main v2 trigger.
+Entry date tracking — post-mortem approximates entry_date as exit_date − 30 days. Store actual entry date in Neon at BUY/SHORT execution time to fix hold-period accuracy.
 
 ## 8 Niches / 80 Stocks
 

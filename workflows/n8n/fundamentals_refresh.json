@@ -1,0 +1,296 @@
+{
+  "updatedAt": "2026-05-21T01:48:01.213Z",
+  "createdAt": "2026-05-20T15:36:58.143Z",
+  "id": "8hHaG6U0ToaHRAei",
+  "name": "[Stocks] 4. Fundamentals Refresh",
+  "description": null,
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 11 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "11111111-1111-1111-1111-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "11111111-1111-1111-1111-000000000002",
+      "name": "When clicking 'Execute workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const niches = {\n  cybersecurity:    ['CRWD','PANW','ZS','OKTA','FTNT','S','CYBR','TMUS','QLYS','TENB'],\n  defense:          ['LMT','RTX','NOC','GD','HII','LHX','KTOS','RCAT','PLTR','AXON'],\n  nuclear_uranium:  ['CCJ','UEC','NXE','DNN','SMR','OKLO','CEG','VST','ETR','NEE'],\n  copper_minerals:  ['FCX','SCCO','TECK','HBM','VALE','MP','LTHM','ALB','SQM','LAC'],\n  ai_semiconductors:['NVDA','AMD','AVGO','QCOM','MRVL','AMAT','KLAC','LRCX','MU','ARM'],\n  cloud_hyperscalers:['MSFT','AMZN','GOOGL','META','ORCL','SNOW','MDB','DDOG','NET','CRM'],\n  oil_gas:          ['XOM','CVX','COP','SLB','HAL','MPC','PSX','VLO','OXY','EOG'],\n  data_centers:     ['EQIX','DLR','AMT','IREN','CORZ','VRT','SMCI','DELL','HPE','WDC'],\n};\nconst items = [];\nfor (const [niche, tickers] of Object.entries(niches)) {\n  for (const ticker of tickers) {\n    items.push({ json: { ticker, niche } });\n  }\n}\nreturn items;\n"
+      },
+      "id": "11111111-1111-1111-1111-000000000003",
+      "name": "Prepare Tickers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "11111111-1111-1111-1111-000000000004",
+      "name": "Loop Over Tickers",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        480,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://finnhub.io/api/v1/stock/metric",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "symbol",
+              "value": "={{ $('Loop Over Tickers').first().json.ticker }}"
+            },
+            {
+              "name": "metric",
+              "value": "all"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Finnhub-Token",
+              "value": "d7ldsphr01qm7o0bg1lgd7ldsphr01qm7o0bg1m0"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "11111111-1111-1111-1111-000000000005",
+      "name": "Fetch Metric",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        688,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ticker = $('Loop Over Tickers').first().json.ticker;\nconst metric = $('Fetch Metric').first().json.metric || {};\nconst rec = {};\nconst pt  = {};\n\nconst val = v => {\n  const n = Number(v);\n  return (v !== null && v !== undefined && v !== '' && !isNaN(n)) ? n : null;\n};\nconst intVal = v => {\n  const n = Number(v);\n  return (v !== null && v !== undefined && v !== '' && !isNaN(n)) ? Math.round(n) : null;\n};\nconst s  = v => val(v)    !== null ? val(v)    : 'NULL';\nconst si = v => intVal(v) !== null ? intVal(v) : 'NULL';\n\nconst sql = `INSERT INTO stocks.stock_fundamentals (\n  ticker, pe_ratio, pb_ratio, ps_ratio,\n  revenue_growth_yoy, gross_margin, net_margin,\n  beta, week_52_high, week_52_low, last_eps_surprise_pct,\n  analyst_buy, analyst_hold, analyst_sell,\n  price_target_avg, price_target_high, price_target_low, fetched_at\n) VALUES (\n  '${ticker}',\n  ${s(metric.peTTM)}, ${s(metric.pbAnnual)}, ${s(metric.psTTM)},\n  ${s(metric.revenueGrowthTTMYoy)}, ${s(metric.grossMarginTTM)}, ${s(metric.netMarginTTM)},\n  ${s(metric.beta)}, ${s(metric['52WeekHigh'])}, ${s(metric['52WeekLow'])},\n  ${s(metric.epsGrowthQuarterlyYoy)},\n  ${si(rec.buy)}, ${si(rec.hold)}, ${si(rec.sell)},\n  ${s(pt.targetMean)}, ${s(pt.targetHigh)}, ${s(pt.targetLow)},\n  NOW()\n)\nON CONFLICT (ticker) DO UPDATE SET\n  pe_ratio             = EXCLUDED.pe_ratio,\n  pb_ratio             = EXCLUDED.pb_ratio,\n  ps_ratio             = EXCLUDED.ps_ratio,\n  revenue_growth_yoy   = EXCLUDED.revenue_growth_yoy,\n  gross_margin         = EXCLUDED.gross_margin,\n  net_margin           = EXCLUDED.net_margin,\n  beta                 = EXCLUDED.beta,\n  week_52_high         = EXCLUDED.week_52_high,\n  week_52_low          = EXCLUDED.week_52_low,\n  last_eps_surprise_pct= EXCLUDED.last_eps_surprise_pct,\n  analyst_buy          = EXCLUDED.analyst_buy,\n  analyst_hold         = EXCLUDED.analyst_hold,\n  analyst_sell         = EXCLUDED.analyst_sell,\n  price_target_avg     = EXCLUDED.price_target_avg,\n  price_target_high    = EXCLUDED.price_target_high,\n  price_target_low     = EXCLUDED.price_target_low,\n  fetched_at           = NOW()`;\n\nreturn [{ json: { ticker, sql } }];\n"
+      },
+      "id": "11111111-1111-1111-1111-000000000008",
+      "name": "Parse Fundamentals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        928,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.sql }}",
+        "options": {}
+      },
+      "id": "11111111-1111-1111-1111-000000000009",
+      "name": "Upsert Fundamentals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        1152,
+        400
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "05VVveQbbS7Uh0X3",
+          "name": "Neon - Stocks Agent"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 4
+      },
+      "id": "11111111-1111-1111-1111-000000000010",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        400
+      ],
+      "webhookId": "ca132f12-009a-4017-b2f2-bb2f9245c097"
+    },
+    {
+      "parameters": {},
+      "id": "11111111-1111-1111-1111-000000000011",
+      "name": "Done",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        688,
+        192
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Tickers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Prepare Tickers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Tickers": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Tickers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Tickers": {
+      "main": [
+        [
+          {
+            "node": "Done",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Metric",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Metric": {
+      "main": [
+        [
+          {
+            "node": "Parse Fundamentals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Fundamentals": {
+      "main": [
+        [
+          {
+            "node": "Upsert Fundamentals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Fundamentals": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Tickers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": {},
+  "versionId": "1356d31a-9696-4684-a139-b8437e2eb559",
+  "activeVersionId": null,
+  "versionCounter": 32,
+  "triggerCount": 1,
+  "shared": [
+    {
+      "updatedAt": "2026-05-20T15:36:58.146Z",
+      "createdAt": "2026-05-20T15:36:58.146Z",
+      "role": "workflow:owner",
+      "workflowId": "8hHaG6U0ToaHRAei",
+      "projectId": "kzSWKPSBEaMy9MYg",
+      "project": {
+        "updatedAt": "2026-05-15T02:49:45.334Z",
+        "createdAt": "2026-05-15T02:49:22.179Z",
+        "id": "kzSWKPSBEaMy9MYg",
+        "name": "Jose Tomas jtfernandez1992@gmail.com <jtfernandez1992@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "5d82f91c-bede-4543-8849-890f3004a997"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": null
+}

@@ -790,7 +790,7 @@
             },
             {
               "name": "qty",
-              "value": "={{ String($('Prepare Trade Actions').item.json.shares) }}"
+              "value": "={{ String(Math.floor($('Prepare Trade Actions').item.json.shares)) }}"
             },
             {
               "name": "side",

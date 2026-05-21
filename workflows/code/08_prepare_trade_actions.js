@@ -24,8 +24,21 @@ if (actions.length === 0) {
   }];
 }
 
+// Cash guard: skip BUY/SHORT orders that exceed available cash.
+// SELL/COVER always go through — they free cash rather than consume it.
+let remainingCash = parseFloat(orch.account?.cash || 0);
+const filteredActions = actions.filter(action => {
+  if (action.action === 'SELL' || action.action === 'COVER') return true;
+  const cost = action.size_usd || 0;
+  if (cost <= remainingCash) {
+    remainingCash -= cost;
+    return true;
+  }
+  return false; // insufficient cash — skip this order
+});
+
 // Output one item per action. Each item carries everything the Alpaca HTTP Request needs.
-return actions.map(action => ({
+return filteredActions.map(action => ({
   json: {
     // Trade identity
     action:          action.action,    // BUY | SELL | SHORT | COVER

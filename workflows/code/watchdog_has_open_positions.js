@@ -1,7 +1,7 @@
 // Node: Has Open Positions? (Watchdog)
 // Maps open Alpaca positions to niches.
 // Returns empty (stops execution) if no positions in our universe.
-// Output: { open_niches, positions_by_niche, position_count }
+// Output: { open_niches, positions_by_niche, position_count, tickers_csv, raw_positions }
 
 const TICKER_NICHE = {
   CRWD:'cybersecurity',PANW:'cybersecurity',ZS:'cybersecurity',OKTA:'cybersecurity',
@@ -45,7 +45,16 @@ for (const pos of positions) {
   if (parseFloat(pos.qty) < 0) byNiche[niche].has_short = true;
 }
 
-const openNiches = Object.keys(byNiche);
+const openNiches      = Object.keys(byNiche);
 if (openNiches.length === 0) return [];
 
-return [{ json: { open_niches: openNiches, positions_by_niche: byNiche, position_count: positions.length } }];
+const openPositions   = positions.filter(p => TICKER_NICHE[p.symbol]);
+const tickers         = openPositions.map(p => p.symbol);
+
+return [{ json: {
+  open_niches:        openNiches,
+  positions_by_niche: byNiche,
+  position_count:     positions.length,
+  tickers_csv:        tickers.join(','),  // used in Fetch Alpaca News URL: ?symbols=...
+  raw_positions:      openPositions,      // full Alpaca objects for LLM context
+} }];

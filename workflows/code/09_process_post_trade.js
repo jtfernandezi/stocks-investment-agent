@@ -12,7 +12,8 @@ const account  = orch.account || {};
 // For now, use the orchestrator's account snapshot (close enough for this session).
 const longValue  = Math.abs(parseFloat(account.long_market_value  || 0));
 const shortValue = Math.abs(parseFloat(account.short_market_value || 0));
-const unrealPnl  = parseFloat(account.equity || 0) - parseFloat(account.portfolio_value || 0);
+// account.unrealized_pl is passed from Alpaca via 02_compute_derived_metrics (total unrealized P&L across all positions)
+const unrealPnl  = parseFloat(account.unrealized_pl || 0);
 
 // Build positions JSON for snapshot (current state before trades fully settle)
 const positionsJson = (orch.portfolio_review || []).map(p => ({
@@ -23,10 +24,12 @@ const positionsJson = (orch.portfolio_review || []).map(p => ({
   stop_proximity:  p.stop_proximity,
 }));
 
-// Separate longs and shorts
-const longReviews  = positionsJson.filter(p => p.current_action !== 'COVER');
-const shortReviews = positionsJson.filter(p => p.current_action === 'COVER' ||
-  (p.current_action === 'HOLD' && p.ticker)); // simplified — orchestrator knows
+// Separate longs and shorts using actual Alpaca position qty (qty < 0 = short)
+const shortTickers = new Set(
+  (orch.open_positions || []).filter(p => parseFloat(p.qty) < 0).map(p => p.symbol)
+);
+const longReviews  = positionsJson.filter(p => !shortTickers.has(p.ticker));
+const shortReviews = positionsJson.filter(p =>  shortTickers.has(p.ticker));
 
 // Escape single quotes for SQL string interpolation ('' is PostgreSQL's escape for ')
 const sqlEsc = s => (s || '').replace(/'/g, "''");

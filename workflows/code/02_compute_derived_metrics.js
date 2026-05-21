@@ -277,6 +277,7 @@ return [{
       long_market_value:  parseFloat(accountRaw.long_market_value),
       short_market_value: parseFloat(accountRaw.short_market_value),
       equity:             parseFloat(accountRaw.equity),
+      unrealized_pl:      parseFloat(accountRaw.unrealized_pl || 0),
     },
     positions,
     openOrders,

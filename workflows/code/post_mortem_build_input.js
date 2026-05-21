@@ -6,12 +6,12 @@
 // ── GATHER DATA ───────────────────────────────────────────────────────────────
 const webhook  = $("Workflow Trigger").first().json;
 const sigRows  = $("Load Signals During Hold").all().map(i => i.json);
-const sectorReturn = $("Fetch Sector ETF Return").first()?.json || {};
 
 // ── COMPUTE P&L ───────────────────────────────────────────────────────────────
 const entryPrice  = parseFloat(webhook.entry_price  || 0);
 const exitPrice   = parseFloat(webhook.exit_price   || 0);
-const direction   = webhook.side === 'LONG' ? 'long' : 'short';
+// webhook.side is 'LONG'/'SHORT'; webhook.direction is 'long'/'short' — accept either
+const direction   = (webhook.side === 'LONG' || webhook.direction === 'long') ? 'long' : 'short';
 const isLong      = direction === 'long';
 
 let pnlPct;
@@ -41,7 +41,6 @@ const holdSignals = sigRows.map(s => {
 }).join(' → ');
 
 // ── SECTOR ETF PERFORMANCE (Attribution Component A) ─────────────────────────
-let sectorEtfReturn = null;
 const SECTOR_ETF = {
   cybersecurity:     'HACK',
   defense:           'ITA',
@@ -52,17 +51,8 @@ const SECTOR_ETF = {
   oil_gas:           'XLE',
   data_centers:      'DTCR',
 };
-const etfTicker = SECTOR_ETF[webhook.niche] || 'SPY';
-
-// sectorReturn comes from an Alpaca bars fetch for the ETF over the hold period
-if (sectorReturn && sectorReturn.bars && sectorReturn.bars[etfTicker]) {
-  const bars = sectorReturn.bars[etfTicker];
-  if (bars.length >= 2) {
-    const entryBar = bars[0];
-    const exitBar  = bars[bars.length - 1];
-    sectorEtfReturn = parseFloat(((exitBar.c - entryBar.c) / entryBar.c * 100).toFixed(2));
-  }
-}
+const etfTicker     = SECTOR_ETF[webhook.niche] || 'SPY';
+const sectorEtfReturn = null;  // not yet fetched — add Fetch Sector ETF Return node to enable
 
 // ── ALTERNATIVE PICKS PERFORMANCE ────────────────────────────────────────────
 // alt_tickers + alt_returns come from the webhook payload

@@ -100,23 +100,34 @@ const closedPositions = enrichedActions.filter(a => a.action === 'SELL' || a.act
 const openingActions  = enrichedActions.filter(a => a.action === 'BUY'  || a.action === 'SHORT');
 
 // For each closed position, build the post-mortem webhook payload
+const exitDate = orchInput.portfolio_state.session_id.split('_')[0];
 const postMortemPayloads = closedPositions.map(action => {
   const ticker   = action.ticker;
   const position = (state.positions || []).find(p => p.symbol === ticker);
 
+  // Approximate entry date as 30 days before exit — we don't track open date in DB yet.
+  // This ensures Load Signals During Hold gets a valid date (not null → SQL error).
+  const entryDate = new Date(new Date(exitDate).getTime() - 30 * 86400000)
+                      .toISOString().split('T')[0];
+
   return {
     ticker,
-    niche:        action.niche,
-    direction:    action.action === 'SELL' ? 'long' : 'short',
-    action:       action.action,
-    exit_reason:  action.exit_reason,
-    exit_price:   priceMap[ticker] ? priceMap[ticker].current : null,
-    entry_price:  position ? parseFloat(position.avg_entry_price) : null,
-    entry_date:   null,  // would need to track this in Neon (add to positions tracking)
-    exit_date:    orchInput.portfolio_state.session_id.split('_')[0],
-    session_id:   orchInput.portfolio_state.session_id,
-    // Include for post-mortem context:
-    specialists_at_exit: orchInput.specialists_summary,
+    niche:                       action.niche,
+    side:                        action.action === 'SELL' ? 'LONG' : 'SHORT',
+    direction:                   action.action === 'SELL' ? 'long' : 'short',
+    action:                      action.action,
+    exit_reason:                 action.exit_reason,
+    exit_price:                  priceMap[ticker] ? priceMap[ticker].current : null,
+    entry_price:                 position ? parseFloat(position.avg_entry_price) : null,
+    entry_date:                  entryDate,
+    exit_date:                   exitDate,
+    session_id:                  orchInput.portfolio_state.session_id,
+    signal_history_pattern:      action.signal_history_pattern      || null,
+    thesis:                      action.thesis                      || null,
+    size_usd:                    action.size_usd                    || null,
+    entry_specialist_confidence: action.confidence                  || null,
+    entry_effective_confidence:  action.effective_confidence        || null,
+    specialists_at_exit:         orchInput.specialists_summary,
   };
 });
 

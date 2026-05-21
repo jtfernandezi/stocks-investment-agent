@@ -14,7 +14,7 @@ const RSS_FEEDS = {
   ],
   nuclear_uranium: [
     'https://world-nuclear-news.org/rss',
-    'https://www.mining.com/category/uranium/feed/',
+    'https://www.resourceworld.com/feed/',   // mining.com/category/uranium returned 404
   ],
   copper_minerals: [
     'https://www.mining.com/feed/',
@@ -22,7 +22,7 @@ const RSS_FEEDS = {
   ],
   ai_semiconductors: [
     'https://semianalysis.com/feed/',
-    'https://www.theregister.com/science/research/headlines.atom',
+    'https://feeds.arstechnica.com/arstechnica/technology-lab',
   ],
   cloud_hyperscalers: [
     'https://thenewstack.io/feed/',
@@ -30,11 +30,11 @@ const RSS_FEEDS = {
   ],
   oil_gas: [
     'https://oilprice.com/rss/main',
-    'https://www.rigzone.com/rss/news/',
+    'https://seekingalpha.com/sector/energy.xml',
   ],
   data_centers: [
     'https://www.datacenterdynamics.com/en/rss/',
-    'https://www.theregister.com/data_centre/headlines.atom',
+    'https://www.datacenterknowledge.com/rss.xml',
   ],
 };
 

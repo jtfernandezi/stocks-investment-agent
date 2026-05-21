@@ -4,7 +4,7 @@
 // Output: 1 item with system_prompt + user_prompt for OpenAI GPT-5.1
 
 const ctx         = $("Compute Derived Metrics").first().json;
-const specialists = $input.all().map(i => i.json);
+const specialists = $("Parse & Save All Signals").all().map(i => i.json);
 
 // ── HELPER: Format positions ──────────────────────────────────────────────────
 function formatPositions(positions, stopProximity, earningsAtRisk, priceMap) {

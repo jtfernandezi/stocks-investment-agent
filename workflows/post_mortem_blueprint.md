@@ -1,6 +1,7 @@
 # Workflow 3 — Post-Mortem Blueprint
 
-Triggered by webhook. Called by Main Analysis (node 38) and Watchdog (node 7) whenever a SELL or COVER is executed.
+Triggered via Execute Workflow from Main Analysis v2 after every SELL or COVER action.
+Runs a 4-component attribution analysis and stores results for the feedback learning system.
 
 ## Critical: Node naming
 
@@ -14,15 +15,15 @@ The Code nodes reference other nodes by exact name:
 ## Node map
 
 ```
-[1] Workflow Trigger                   (receives closed trade context from Execute Workflow)
+[1] Workflow Trigger                   (Execute Workflow Trigger — called by Main v2 after SELL/COVER)
       ↓
-[2] Load Signals During Hold           (Postgres SELECT — specialist signals during hold period)
+[2] Load Signals During Hold           (Postgres SELECT — specialist signals during the hold period)
       ↓
 [3] Build Post-Mortem Input            (Code: post_mortem_build_input.js)
       ↓
 [4] Call Post-Mortem LLM              (Native OpenAI node v1.3 — GPT-4o-mini)
       ↓
-[5] Parse Post-Mortem Output           (Code: post_mortem_store.js)
+[5] Parse & Store Post-Mortem          (Code: post_mortem_store.js)
       ↓
 [6] Insert Trade Lesson                (Postgres INSERT into trade_lessons)
       ↓
@@ -31,15 +32,16 @@ The Code nodes reference other nodes by exact name:
 [8] Update Pattern Performance         (Postgres INSERT OR UPDATE pattern_performance)
 ```
 
-> **Note:** "Fetch Sector ETF Return" and "Fetch Alt Picks Performance" are not implemented as separate nodes. Sector ETF data falls back to `null` in `post_mortem_build_input.js` (uses `?.` optional chaining). Alternative pick returns are passed in the webhook payload (`alt_tickers`, `alt_returns` fields) rather than fetched here.
+---
 
 ## Node configurations
 
 ### [1] Workflow Trigger
 Node name: **`Workflow Trigger`** (exact — referenced by `post_mortem_build_input.js`)
-- Node type: **Execute Workflow Trigger** (not a Webhook — called by the other workflows via Execute Workflow node)
+- Node type: **Execute Workflow Trigger** (NOT a Webhook — this workflow is called directly by Main v2 via Execute Workflow node, not via HTTP)
 - Receives the closed trade payload as input items
-- No URL needed
+
+---
 
 ### [2] Load Signals During Hold
 Node name: **`Load Signals During Hold`** (exact — referenced by `post_mortem_build_input.js`)
@@ -52,9 +54,17 @@ WHERE niche = '{{ $json.niche }}'
 ORDER BY created_at ASC;
 ```
 
+> **Note on entry_date**: Alpaca's positions API does not expose when a position was opened. Until entry date is stored in Neon at BUY/SHORT execution time, `entry_date` is approximated as `exit_date - 30 days` by `07_parse_orchestrator_output.js`. This is a known limitation — the SQL query still executes correctly with this value.
+
+---
+
 ### [3] Build Post-Mortem Input
 Node name: **`Build Post-Mortem Input`** (exact — referenced by `post_mortem_store.js`)
-- Node type: Code (post_mortem_build_input.js)
+- Node type: Code (`post_mortem_build_input.js`)
+- Computes P&L (short P&L = `(entry - exit) / entry × 100`), hold days, formats signal history during hold
+- Sector ETF return (Component A) defaults to `null` — a `Fetch Sector ETF Return` node would need to be added to populate it
+
+---
 
 ### [4] Call Post-Mortem LLM
 - Node type: **Native OpenAI node v1.3**
@@ -64,13 +74,21 @@ Node name: **`Build Post-Mortem Input`** (exact — referenced by `post_mortem_s
 - Temperature: 0.3
 - Max tokens: 1500
 - Response format: JSON object
-- Output shape per item: `{ message: { content: "..." } }` (v1.3 native format, used by post_mortem_store.js)
+- Output shape per item: `{ message: { content: "..." } }` (v1.3 format — used by `post_mortem_store.js`)
 
-### [5] Parse Post-Mortem Output
-Node name: **`Parse Post-Mortem Output`**
-- Node type: Code (post_mortem_store.js)
+---
+
+### [5] Parse & Store Post-Mortem
+Node name: **`Parse & Store Post-Mortem`**
+- Node type: Code (`post_mortem_store.js`)
+- Parses LLM JSON output; falls back to context values if parse fails
+- `sqlEsc` applied to all string fields before SQL interpolation
+
+---
 
 ### [6] Insert Trade Lesson
+> **Important**: Set `alwaysOutputData: true` on this node. `ON CONFLICT DO NOTHING` returns 0 rows — without this flag n8n sees no output and stops execution, preventing [7] and [8] from running.
+
 ```sql
 INSERT INTO stocks.trade_lessons (
   ticker, niche, direction, outcome, pnl_pct, pnl_usd, hold_days,
@@ -88,10 +106,15 @@ INSERT INTO stocks.trade_lessons (
   '{{ $json.key_lesson }}', '{{ $json.pattern_tag }}',
   '{{ $json.alternative_picks }}'::jsonb,
   {{ $json.entry_specialist_confidence }}, {{ $json.entry_effective_confidence }}
-);
+)
+ON CONFLICT DO NOTHING;
 ```
 
+---
+
 ### [7] Update Specialist Accuracy
+> **Important**: Set `alwaysOutputData: true` on this node as well (same reason as [6]).
+
 ```sql
 INSERT INTO stocks.specialist_accuracy (niche, period_days, total_signals, high_conviction_signals,
   correct_signals, hit_rate, avg_reported_confidence, scaling_factor, calibration_error,
@@ -101,20 +124,20 @@ SELECT
   30 AS period_days,
   COUNT(*) AS total_signals,
   COUNT(*) FILTER (WHERE entry_effective_confidence >= 0.75) AS high_conviction_signals,
-  COUNT(*) FILTER (WHERE 
+  COUNT(*) FILTER (WHERE
     (direction = 'long'  AND outcome = 'WIN') OR
     (direction = 'short' AND outcome = 'WIN')
   ) AS correct_signals,
-  AVG(CASE WHEN 
+  AVG(CASE WHEN
     (direction = 'long'  AND outcome = 'WIN') OR
     (direction = 'short' AND outcome = 'WIN')
     THEN 1.0 ELSE 0.0 END) AS hit_rate,
   AVG(entry_specialist_confidence) AS avg_reported_confidence,
-  AVG(CASE WHEN 
+  AVG(CASE WHEN
     (direction = 'long'  AND outcome = 'WIN') OR
     (direction = 'short' AND outcome = 'WIN')
     THEN 1.0 ELSE 0.0 END) / NULLIF(AVG(entry_specialist_confidence), 0) AS scaling_factor,
-  ABS(AVG(entry_specialist_confidence) - AVG(CASE WHEN 
+  ABS(AVG(entry_specialist_confidence) - AVG(CASE WHEN
     (direction = 'long'  AND outcome = 'WIN') OR
     (direction = 'short' AND outcome = 'WIN')
     THEN 1.0 ELSE 0.0 END)) AS calibration_error,
@@ -136,7 +159,10 @@ DO UPDATE SET
   updated_at               = NOW();
 ```
 
+---
+
 ### [8] Update Pattern Performance
+
 ```sql
 INSERT INTO stocks.pattern_performance (
   pattern_type, niche, total_trades, winning_trades, win_rate,
@@ -147,9 +173,9 @@ SELECT
   COUNT(*) AS total_trades,
   COUNT(*) FILTER (WHERE outcome = 'WIN') AS winning_trades,
   AVG(CASE WHEN outcome = 'WIN' THEN 1.0 ELSE 0.0 END) AS win_rate,
-  AVG(CASE WHEN outcome = 'WIN' THEN pnl_pct ELSE NULL END) AS avg_win_pct,
+  AVG(CASE WHEN outcome = 'WIN'  THEN pnl_pct ELSE NULL END) AS avg_win_pct,
   AVG(CASE WHEN outcome = 'LOSS' THEN pnl_pct ELSE NULL END) AS avg_loss_pct,
-  AVG(CASE WHEN outcome = 'WIN' THEN 1.0 ELSE 0.0 END) *
+  AVG(CASE WHEN outcome = 'WIN'  THEN 1.0 ELSE 0.0 END) *
     AVG(CASE WHEN outcome = 'WIN'  THEN pnl_pct ELSE NULL END) +
   AVG(CASE WHEN outcome = 'LOSS' THEN 1.0 ELSE 0.0 END) *
     AVG(CASE WHEN outcome = 'LOSS' THEN pnl_pct ELSE NULL END) AS expected_value

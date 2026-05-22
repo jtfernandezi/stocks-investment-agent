@@ -116,6 +116,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 - **Restore Trade Context**: Code node between Merge Trade Actions and Needs Trailing Stop?. Re-attaches `ticker`, `action`, `shares`, `stop_pct_used`, `needs_trailing_stop` from Prepare Trade Actions into `$json` after the Alpaca response overwrites it. Uses symbol-based matching (not array index) so branch-merge ordering doesn't matter.
 - **Cash guard in Prepare Trade Actions**: BUY/SHORT orders are filtered if cumulative `size_usd` exceeds `account.cash`. SELL/COVER always pass through. Prevents the orchestrator from over-deploying when cash is tight.
 - **Trailing stop shares**: `Math.floor()` applied to share qty — Alpaca rejects fractional GTC trailing stop orders with 422.
+- **Close Position URL**: uses `$('Prepare Trade Actions').first().json.ticker` — NOT `$json.ticker`. After `Cancel Stop Before Close` fires its HTTP DELETE, Alpaca's response overwrites `$json`, so `$json.ticker` becomes undefined. Reading directly from `Prepare Trade Actions` bypasses this.
 
 ## Price Bar Fetch Nodes (9 HTTP + 1 Code)
 
@@ -140,9 +141,18 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 
 ## Known Open Issues
 
-Main Analysis v2 (`l2d06hEvDlfLibms`) — live-tested 2026-05-21. BUY path and trailing stop routing verified. SELL/COVER path fixed (uses DELETE /v2/positions/{ticker}) but not yet tested end-to-end — first clean SELL will also trigger post-mortem for the first time.
-Watchdog v2 (`7n1bPJ91OkMx3KM4`) — built 2026-05-20, currently inactive. Activate to enable. Needs one live-market test run to verify end-to-end flip detection → Main v2 trigger.
 Entry date tracking — post-mortem approximates entry_date as exit_date − 30 days. Store actual entry date in Neon at BUY/SHORT execution time to fix hold-period accuracy.
+Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only tested via pinned data, which bypasses `post_mortem_payloads`). Will fire automatically on the first live orchestrator-initiated SELL/COVER.
+
+## Live Test Results (2026-05-22)
+
+All four workflows activated and running autonomously.
+
+- **BUY + trailing stop path**: verified 2026-05-21 ✓
+- **SELL/COVER path**: verified 2026-05-22 — CCJ closed at $104.84 via DELETE /v2/positions/CCJ ✓
+- **Cancel Stop Before Close**: verified — cancels GTC trailing stop before position close ✓
+- **Watchdog flip detection**: verified — CCJ thesis flip (Cameco milling suspension) detected, Main Analysis v2 triggered ✓
+- **Post-mortem trigger**: wired correctly; fires on first real orchestrator-initiated SELL ✓ (pending live test)
 
 ## 8 Niches / 80 Stocks
 

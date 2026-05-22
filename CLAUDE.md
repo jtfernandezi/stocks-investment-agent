@@ -20,7 +20,7 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 **Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger. Also has a "When Called by Watchdog" trigger that enters at `Set Session`.
 
-**Watchdog** — every 30 min during market hours — workflow ID: `7n1bPJ91OkMx3KM4`
+**Watchdog** — every 30 min, 10:00 AM–3:30 PM ET (starts at 10, not 9:30 — Main Analysis already covers the open; last run at 3:30 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
 Fetches Alpaca News for all open position tickers (single API call) → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook)

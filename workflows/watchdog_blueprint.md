@@ -1,8 +1,11 @@
 # Workflow 2 — Watchdog Blueprint (v2)
 
-Runs every 30 minutes, Monday–Friday, market hours only (9:30 AM–4:00 PM ET).
+Runs every 30 minutes, Monday–Friday, 10:00 AM–3:30 PM ET.
 Single responsibility: detect thesis-changing news for open positions and trigger the orchestrator to decide whether to close.
 Trailing stop monitoring is handled entirely by Alpaca natively — this workflow does NOT check prices.
+
+**Why 10:00 AM start:** Main Analysis already fires at 9:30 AM open — the watchdog would be redundant at that time.
+**Why 3:30 PM end:** Main Analysis fires at 3:50 PM close — no watchdog run needed after that.
 
 ## Why v2 is different from v1
 
@@ -12,7 +15,7 @@ v2 uses Alpaca's News API to fetch breaking headlines for the exact tickers we h
 ## Entry condition
 
 The watchdog only proceeds if:
-1. Market is currently open (between 9:30 AM–4:00 PM ET)
+1. Market is currently open within the watchdog window (10:00 AM–3:30 PM ET)
 2. We have at least one open Alpaca position in our 80-stock universe
 
 Both are checked via IF nodes that route to named terminal (NoOp) nodes — always a finished state.
@@ -58,14 +61,16 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
 
 ### [1] Schedule Trigger
 - Mode: Cron
-- Expression: `*/30 * * * 1-5` (every 30 min, weekdays — market hours enforced by [2])
+- Expression: `0,30 14-20 * * 1-5` (UTC — wide enough to cover both EDT and EST; exact 10:00–15:30 ET window enforced by [2])
+- In EDT (UTC-4): fires 10:00 AM–4:30 PM ET — gate blocks anything after 3:30 PM
+- In EST (UTC-5): fires 9:00 AM–3:30 PM ET — gate blocks anything before 10:00 AM
 
 ---
 
 ### [2] Check Market Open
 - Node type: Code (`watchdog_check_market.js`)
 - Output: `{ market_open: true | false, checked_at, reason? }`
-- Market hours: 9:30 AM–4:00 PM ET (13:30–20:00 UTC)
+- Window: 10:00 AM–3:30 PM ET — DST-safe via `Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York' })` (no hardcoded UTC offsets)
 
 ---
 

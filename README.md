@@ -51,7 +51,7 @@ The system improves automatically over time without code changes:
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | Main analysis | Cron 3×/day (pre-market, midday, post-market) | Run all 8 specialists → orchestrator → execute trades |
-| Watchdog | Cron every 30 min (market hours) | Check for thesis flip (signal reversal) on open positions |
+| Watchdog | Cron every 30 min (10:00 AM–3:30 PM ET) | Check for thesis flip (signal reversal) on open positions |
 | Post-mortem | Webhook, fires after every SELL/COVER | Attribution analysis + lesson generation |
 
 Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no price monitoring needed in n8n.

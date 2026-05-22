@@ -5,7 +5,7 @@
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|---------|
 | Main Analysis | `main_analysis_blueprint.md` | Cron 3×/day | Run 8 specialists → orchestrator → execute trades |
-| Watchdog | `watchdog_blueprint.md` | Cron every 30 min (market hours) | Detect thesis-flip signals, close affected positions |
+| Watchdog | `watchdog_blueprint.md` | Cron every 30 min (10:00 AM–3:30 PM ET) | Detect thesis-flip signals, trigger orchestrator to decide close/hold |
 | Post-Mortem | `post_mortem_blueprint.md` | Webhook (called by Main Analysis **and** Watchdog) | Attribution analysis on every closed trade |
 
 ## Credentials to configure in n8n

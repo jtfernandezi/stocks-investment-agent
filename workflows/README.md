@@ -85,9 +85,8 @@ Note: the "Attach Feed Niche" node [21] (Main Analysis) uses inline code — see
 
 ## Time zones
 
-All cron expressions in n8n are UTC. The workflows use EDT (UTC-4, summer) times:
-- Morning: 12:30 UTC = 8:30 AM ET
-- Midday: 16:00 UTC = 12:00 PM ET  
-- Close: 20:30 UTC = 4:30 PM ET
+Cron expressions are in **ET (America/New_York)** — the Main Analysis workflow timezone is set to `America/New_York`, so DST is handled automatically. No manual adjustment needed in winter.
 
-Adjust by +1h in winter (EST = UTC-5).
+- Morning: `30 9 * * 1-5` → 9:30 AM ET
+- Midday: `0 12 * * 1-5` → 12:00 PM ET
+- Close: `50 15 * * 1-5` → 3:50 PM ET

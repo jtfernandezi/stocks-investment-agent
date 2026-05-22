@@ -142,8 +142,8 @@ const postMortemPayloads = closedPositions.map(action => {
 
 // ── DERIVE MARKET OPEN FROM SESSION TYPE (not LLM judgment) ──────────────────
 // The LLM doesn't reliably know what morning/midday/close map to in ET.
-// Market is open for morning (8:30 AM ET) and midday (12 PM ET) sessions.
-// Close (4:30 PM ET) is after regular hours — no new orders.
+// Market is open for morning (9:30 AM ET) and midday (12:00 PM ET) sessions.
+// Close (3:50 PM ET) is after regular hours — no new orders.
 const isMarketOpen = orchInput.session_type === 'morning' || orchInput.session_type === 'midday';
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────

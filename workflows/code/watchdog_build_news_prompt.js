@@ -1,11 +1,10 @@
 // Node: Build News Prompt (Watchdog)
 // Position: After Fetch Alpaca News HTTP node
-// Input: $input = Alpaca news response { news: [...], next_page_token }
+// Input: N items — one per ticker (each { news: [...] } from per-ticker Alpaca fetch)
 // Reads position context from $("Has Open Positions?") by name.
 // Output: 1 item — { system_prompt, user_prompt } for the watchdog LLM call.
 
-const newsRaw   = $input.first().json;
-const articles  = newsRaw.news || [];
+const articles  = $input.all().flatMap(i => i.json.news || []);
 const posCtx    = $("Has Open Positions?").first().json;
 const positions = posCtx.raw_positions || [];
 

@@ -28,10 +28,7 @@ const TICKER_NICHE = {
   HPE:'data_centers',WDC:'data_centers',
 };
 
-const raw       = $input.first().json;
-const positions = Array.isArray(raw) ? raw
-                : Array.isArray(raw && raw.body) ? raw.body
-                : [];
+const positions = $input.all().map(i => i.json);
 
 if (positions.length === 0) {
   return [{ json: { has_positions: false, reason: 'No open Alpaca positions' } }];

@@ -17,7 +17,7 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 
 ## Three Workflows
 
-**Main Analysis v2** — 3×/day (8:30 AM, 12 PM, 4:30 PM ET) — workflow ID: `l2d06hEvDlfLibms`
+**Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger. Also has a "When Called by Watchdog" trigger that enters at `Set Session`.
 
 **Watchdog** — every 30 min during market hours — workflow ID: `7n1bPJ91OkMx3KM4`

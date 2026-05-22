@@ -1,34 +1,52 @@
 // Node: Set Session
-// Position: Right after Schedule Trigger
+// Position: Right after Schedule Trigger or When Called by Watchdog
 // Output: 1 item with session metadata used by all downstream nodes
 
 const now = new Date();
-const utcHour = now.getUTCHours();
-const utcMinute = now.getUTCMinutes();
-const totalUTCMinutes = utcHour * 60 + utcMinute;
 
-// EDT = UTC-4 (summer). Adjust to UTC-5 in winter.
-// Morning:  8:30 AM ET = 12:30 UTC → range 720–840 min
-// Midday:  12:00 PM ET = 16:00 UTC → range 840–1230 min
-// Close:    4:30 PM ET = 20:30 UTC → range 1230+ min
+// Detect watchdog-triggered run — watchdog passes session_type: 'watchdog_flip'
+const inputJson = $input.first()?.json || {};
+const isWatchdog = inputJson.session_type === 'watchdog_flip';
+
+// Get ET time — DST-safe via America/New_York (no hardcoded UTC offsets)
+const parts = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  hour: 'numeric',
+  minute: 'numeric',
+  hour12: false,
+}).formatToParts(now);
+
+const etHour   = parseInt(parts.find(p => p.type === 'hour').value);
+const etMinute = parseInt(parts.find(p => p.type === 'minute').value);
+const etMin    = etHour * 60 + etMinute;
+
+// Session boundaries (ET) — matches schedule: 9:30 AM, 12:00 PM, 3:50 PM
+// morning:  9:30 AM (570) – 12:00 PM (720)
+// midday:  12:00 PM (720) – 3:50 PM  (950)
+// close:    3:50 PM (950)+
 let session_type;
-if (totalUTCMinutes >= 720 && totalUTCMinutes < 840) {
+if (etMin >= 570 && etMin < 720) {
   session_type = 'morning';
-} else if (totalUTCMinutes >= 840 && totalUTCMinutes < 1230) {
+} else if (etMin >= 720 && etMin < 950) {
   session_type = 'midday';
 } else {
   session_type = 'close';
 }
 
-const dateStr = now.toISOString().split('T')[0];  // YYYY-MM-DD
-const session_id = `${dateStr}_${session_type}`;
+const dateStr  = now.toISOString().split('T')[0];  // YYYY-MM-DD
+
+// Watchdog runs get a distinct session_id to avoid colliding with scheduled sessions
+const session_id = isWatchdog
+  ? `${dateStr}_${session_type}_watchdog`
+  : `${dateStr}_${session_type}`;
 
 return [{
   json: {
     session_type,          // 'morning' | 'midday' | 'close'
-    session_id,            // e.g. '2026-05-19_morning'
+    session_id,            // e.g. '2026-05-19_morning' or '2026-05-19_midday_watchdog'
     session_date: dateStr,
     utc_timestamp: now.toISOString(),
-    is_morning: session_type === 'morning',
+    is_morning:  session_type === 'morning',
+    is_watchdog: isWatchdog,
   }
 }];

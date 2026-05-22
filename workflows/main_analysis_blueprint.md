@@ -1,6 +1,6 @@
 # Workflow 1 — Main Analysis v2 Blueprint
 
-Runs 3×/day: 8:30 AM, 12:00 PM, 4:30 PM ET (Monday–Friday).
+Runs 3×/day: 9:30 AM, 12:00 PM, 3:50 PM ET (Monday–Friday).
 Also triggered by the Watchdog workflow when a thesis flip is detected.
 
 ## Entry points
@@ -163,10 +163,10 @@ Two different native OpenAI node versions are used — their output shapes diffe
 
 ### [1a] Schedule Trigger
 - Mode: Cron
-- Cron expressions (add all three):
-  - `30 12 * * 1-5` → 8:30 AM ET
-  - `0 16 * * 1-5`  → 12:00 PM ET
-  - `30 20 * * 1-5` → 4:30 PM ET
+- Cron expressions (add all three) — in ET, DST-safe via workflow timezone `America/New_York`:
+  - `30 9 * * 1-5`  → 9:30 AM ET
+  - `0 12 * * 1-5`  → 12:00 PM ET
+  - `50 15 * * 1-5` → 3:50 PM ET
 
 ### [1b] When Called by Watchdog
 - Node type: **Execute Workflow Trigger** (`n8n-nodes-base.executeWorkflowTrigger`)
@@ -363,7 +363,7 @@ ON CONFLICT (niche, session) DO UPDATE SET
 ### [28] Is Market Open?
 - Determined by `session_type` in code, not by LLM judgment
 - `morning` and `midday` sessions → market open → TRUE branch
-- `close` session (4:30 PM ET) → market closed → FALSE branch
+- `close` session (3:50 PM ET) → market closed → FALSE branch
 
 ---
 

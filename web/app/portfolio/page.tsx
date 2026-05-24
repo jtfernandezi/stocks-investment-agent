@@ -370,63 +370,55 @@ export default function PortfolioPage() {
             <h2 className="text-sm font-semibold text-ink">Concentration Analysis</h2>
             <p className="text-xs text-dim mt-0.5">Weights relative to invested capital · lower HHI = more diversified</p>
           </div>
-          <div className="flex gap-8">
-            {/* Left — ranked bars */}
-            <div className="flex-1 min-w-0 space-y-2">
-              {posWeights.map(p => (
-                <div key={p.ticker} className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-ink w-12 shrink-0">{p.ticker}</span>
-                  <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full ${p.side === 'LONG' ? 'bg-gain/70' : 'bg-loss/70'}`}
-                      style={{ width: `${p.weight}%` }}
-                    />
-                  </div>
-                  <span className="font-mono text-xs text-dim w-10 text-right shrink-0">{p.weight.toFixed(1)}%</span>
-                  <span className={`font-mono text-xs w-12 text-right shrink-0 ${p.pnlPct >= 0 ? 'text-gain' : 'text-loss'}`}>
-                    {p.pnlPct >= 0 ? '+' : ''}{p.pnlPct.toFixed(1)}%
-                  </span>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+              <p className="text-xs text-dim mb-1">Largest Position</p>
+              <p className="font-mono text-base font-semibold text-ink">
+                {posWeights[0]?.ticker}{' '}
+                <span className="text-dim font-normal text-sm">{posWeights[0]?.weight.toFixed(1)}%</span>
+              </p>
+              <p className="text-xs text-dim/60 mt-0.5">of invested capital</p>
+            </div>
+            <div>
+              <p className="text-xs text-dim mb-1">Top 3 Concentration</p>
+              <p className={`font-mono text-base font-semibold ${top3Conc > 70 ? 'text-yellow-400' : 'text-ink'}`}>
+                {top3Conc.toFixed(1)}%
+              </p>
+              <p className="text-xs text-dim/60 mt-0.5">{posWeights.slice(0, 3).map(p => p.ticker).join(' + ')}</p>
+            </div>
+            <div>
+              <p className="text-xs text-dim mb-1">Herfindahl Index</p>
+              <p className={`font-mono text-base font-semibold ${hhi > 0.25 ? 'text-yellow-400' : 'text-ink'}`}>
+                {hhi.toFixed(3)}
+              </p>
+              <p className="text-xs text-dim/60 mt-0.5">
+                {hhi > 0.25 ? 'high concentration' : hhi > 0.10 ? 'moderate concentration' : 'well diversified'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-dim mb-1">Position Count</p>
+              <p className="font-mono text-base font-semibold text-ink">{positions.length}</p>
+              <p className="text-xs text-dim/60 mt-0.5">
+                of 12 max · {positions.filter(p => p.side === 'LONG').length}L / {positions.filter(p => p.side === 'SHORT').length}S
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 pt-4 border-t border-rim/40 space-y-2">
+            {posWeights.map(p => (
+              <div key={p.ticker} className="flex items-center gap-3">
+                <span className="font-mono text-xs text-ink w-12 shrink-0">{p.ticker}</span>
+                <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${p.side === 'LONG' ? 'bg-gain/70' : 'bg-loss/70'}`}
+                    style={{ width: `${p.weight}%` }}
+                  />
                 </div>
-              ))}
-            </div>
-
-            {/* Divider */}
-            <div className="w-px bg-rim/40 shrink-0" />
-
-            {/* Right — KPIs */}
-            <div className="w-44 shrink-0 space-y-5">
-              <div>
-                <p className="text-xs text-dim mb-1">Largest Position</p>
-                <p className="font-mono text-base font-semibold text-ink">
-                  {posWeights[0]?.ticker}{' '}
-                  <span className="text-dim font-normal text-sm">{posWeights[0]?.weight.toFixed(1)}%</span>
-                </p>
-                <p className="text-xs text-dim/60 mt-0.5">of invested capital</p>
+                <span className="font-mono text-xs text-dim w-10 text-right shrink-0">{p.weight.toFixed(1)}%</span>
+                <span className={`font-mono text-xs w-12 text-right shrink-0 ${p.pnlPct >= 0 ? 'text-gain' : 'text-loss'}`}>
+                  {p.pnlPct >= 0 ? '+' : ''}{p.pnlPct.toFixed(1)}%
+                </span>
               </div>
-              <div>
-                <p className="text-xs text-dim mb-1">Top 3 Concentration</p>
-                <p className={`font-mono text-base font-semibold ${top3Conc > 70 ? 'text-yellow-400' : 'text-ink'}`}>
-                  {top3Conc.toFixed(1)}%
-                </p>
-                <p className="text-xs text-dim/60 mt-0.5">{posWeights.slice(0, 3).map(p => p.ticker).join(' + ')}</p>
-              </div>
-              <div>
-                <p className="text-xs text-dim mb-1">Herfindahl Index</p>
-                <p className={`font-mono text-base font-semibold ${hhi > 0.25 ? 'text-yellow-400' : 'text-ink'}`}>
-                  {hhi.toFixed(3)}
-                </p>
-                <p className="text-xs text-dim/60 mt-0.5">
-                  {hhi > 0.25 ? 'high concentration' : hhi > 0.10 ? 'moderate concentration' : 'well diversified'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-dim mb-1">Position Count</p>
-                <p className="font-mono text-base font-semibold text-ink">{positions.length}</p>
-                <p className="text-xs text-dim/60 mt-0.5">
-                  of 12 max · {positions.filter(p => p.side === 'LONG').length}L / {positions.filter(p => p.side === 'SHORT').length}S
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       )}

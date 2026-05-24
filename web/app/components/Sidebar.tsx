@@ -29,21 +29,27 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 min-h-screen bg-panel border-r border-rim flex flex-col transition-all duration-200`}>
+    <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 h-screen sticky top-0 bg-panel border-r border-rim flex flex-col transition-all duration-200`}>
       {/* Header */}
-      <div className={`py-5 border-b border-rim flex items-center gap-2.5 ${collapsed ? 'px-0 justify-center' : 'px-5'}`}>
-        {!collapsed && <BotMessageSquare size={20} className="text-accent" />}
-        {!collapsed && <span className="font-semibold text-ink tracking-tight">Alpha Agent</span>}
+      <div className={`py-5 border-b border-rim flex items-center gap-2.5 ${collapsed ? 'px-3 justify-between' : 'px-5'}`}>
+        <BotMessageSquare size={20} className="text-accent shrink-0" />
+        {!collapsed && <span className="font-semibold text-ink tracking-tight flex-1">Alpha Agent</span>}
         {!collapsed && (
-          <span className="ml-auto text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">
+          <span className="text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">
             Paper
           </span>
         )}
-        {collapsed && <BotMessageSquare size={20} className="text-accent" />}
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className={`flex items-center justify-center w-7 h-7 rounded-md text-dim hover:text-ink hover:bg-ink/5 transition-colors shrink-0 ${collapsed ? '' : 'ml-1'}`}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+        </button>
       </div>
 
       {/* Nav */}
-      <nav className={`flex-1 py-4 space-y-0.5 ${collapsed ? 'px-2' : 'px-3'}`}>
+      <nav className={`flex-1 py-4 space-y-0.5 overflow-y-auto ${collapsed ? 'px-2' : 'px-3'}`}>
         {nav.map(({ href, label, icon: Icon }) => {
           const active = pathname === href;
           return (
@@ -67,21 +73,9 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className={`py-4 border-t border-rim ${collapsed ? 'px-0 flex flex-col items-center gap-3' : 'px-5'}`}>
-        {!collapsed && (
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-2 h-2 rounded-full bg-gain animate-pulse" />
-            <span className="text-xs text-dim">Agent running</span>
-          </div>
-        )}
-        {collapsed && <span className="w-2 h-2 rounded-full bg-gain animate-pulse" title="Agent running" />}
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          className="flex items-center justify-center w-8 h-8 rounded-lg text-dim hover:text-ink hover:bg-ink/5 transition-colors"
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-        </button>
+      <div className={`py-4 border-t border-rim flex items-center ${collapsed ? 'justify-center px-3' : 'px-5 gap-2'}`}>
+        <span className="w-2 h-2 rounded-full bg-gain animate-pulse shrink-0" title="Agent running" />
+        {!collapsed && <span className="text-xs text-dim">Agent running</span>}
       </div>
     </aside>
   );

@@ -11,7 +11,7 @@ export default function PageShell({ children }: PageShellProps) {
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
-        <main className="flex-1 p-6 space-y-6 max-w-7xl">{children}</main>
+        <main className="flex-1 p-6 space-y-6 w-full">{children}</main>
       </div>
     </div>
   );

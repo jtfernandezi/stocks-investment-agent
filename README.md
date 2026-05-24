@@ -13,7 +13,7 @@ Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/posi
 | Workflow orchestration | n8n (Railway) |
 | Database | Neon (PostgreSQL) |
 | Trade execution | Alpaca Paper Trading API |
-| Dashboard | Vercel (static HTML) — not yet implemented |
+| Dashboard | Next.js 15 on Vercel — 6 pages wired to Neon + Alpaca |
 | Specialist LLMs | GPT-4o-mini |
 | Orchestrator LLM | GPT-5.1 |
 | Fundamentals data | Finnhub API (free tier, morning refresh only) |
@@ -95,6 +95,7 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 | `trade_lessons` | Post-mortem analysis + key lesson per closed trade |
 | `specialist_accuracy` | 30-day hit rate, scaling factor, calibration error per specialist |
 | `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
+| `investor_letters` | LLM-written investor letters per close session (session UNIQUE) |
 
 ## Prompts
 

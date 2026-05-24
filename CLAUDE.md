@@ -14,11 +14,12 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 | News | RSS feeds (2 per niche, up to 15 articles/niche/session) |
 | Specialist LLMs | GPT-4o-mini |
 | Orchestrator LLM | GPT-5.1 |
+| Dashboard | Next.js 15 on Vercel (`web/`) — 6 pages wired to Neon + Alpaca |
 
 ## Three Workflows
 
 **Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
-8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger. Also has a "When Called by Watchdog" trigger that enters at `Set Session`.
+8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session`.
 
 **Watchdog** — every 30 min, 10:00 AM–3:30 PM ET (starts at 10, not 9:30 — Main Analysis already covers the open; last run at 3:30 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
 Fetches Alpaca News for all open position tickers (single API call) → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
@@ -48,6 +49,8 @@ Fetches Alpaca News for all open position tickers (single API call) → single L
 | `workflows/code/watchdog_compare_signals.js` | _(deprecated — superseded by watchdog_parse_flip.js)_ | — |
 | `workflows/code/post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
 | `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
+| `workflows/code/letter_build_prompt.js` | Main v2 | Build Letter Prompt (close sessions only) |
+| `workflows/code/letter_store.js` | Main v2 | Parse & Store Letter |
 
 _(v1 files 03_prepare_rss_sources.js, 04_build_specialist_inputs.js, 05_parse_specialist_outputs.js — kept for reference, used by v1 backup workflow only)_
 
@@ -64,6 +67,8 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 - `Build Orchestrator Input` — referenced by `07`
 - `Parse Orchestrator Output` — referenced by `09`
 - `Process Post-Trade` — referenced by inline Build Watchlist SQL and Prepare PM Items nodes
+- `Build Letter Prompt` — referenced by `letter_store.js`
+- `Parse Orchestrator Output`, `Build Orchestrator Input`, `Compute Derived Metrics` — referenced by `letter_build_prompt.js`
 - `Workflow Trigger` — referenced by `post_mortem_build_input.js`
 - `Load Signals During Hold` — referenced by `post_mortem_build_input.js`
 - `Build Post-Mortem Input` — referenced by `post_mortem_store.js`
@@ -180,6 +185,7 @@ All four workflows activated and running autonomously.
 | `trade_lessons` | Post-mortem attribution + key_lesson per closed trade |
 | `specialist_accuracy` | 30-day hit rate, scaling_factor, calibration_error per specialist |
 | `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
+| `investor_letters` | LLM-written investor letters per close session — `session` UNIQUE, `body` full prose text |
 
 ## Credentials (n8n)
 

@@ -17,6 +17,9 @@ interface Signal {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const CELL = 40;
+const GAP  = 5;
+
 function cellBg(direction: string, confidence: number): React.CSSProperties {
   const a = (0.2 + confidence * 0.75).toFixed(2);
   if (direction === 'BULLISH') return { backgroundColor: `rgba(34,197,94,${a})` };
@@ -29,14 +32,14 @@ function parseSession(session: string) {
   if (parts.length >= 4) {
     const [year, month, day, ...rest] = parts;
     const slug = rest.join('-');
-    const d = new Date(`${year}-${month}-${day}`);
+    const d    = new Date(`${year}-${month}-${day}`);
     return {
-      dateKey: `${year}-${month}-${day}`,
-      date:    d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
-      label:   slug === 'morning' ? 'AM' : slug === 'midday' ? 'PM' : 'EOD',
+      dateKey:  `${year}-${month}-${day}`,
+      dateShort: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
+      label:    slug === 'morning' ? 'AM' : slug === 'midday' ? 'PM' : 'EOD',
     };
   }
-  return { dateKey: session, date: session, label: session };
+  return { dateKey: session, dateShort: session, label: '' };
 }
 
 function formatSessionFull(session: string): string {
@@ -91,20 +94,11 @@ export default function SignalHeatmap() {
       .finally(() => setLoading(false));
   }, []);
 
-  // Build lookup: session → niche → signal
+  // session → niche → signal
   const lookup = new Map<string, Map<string, Signal>>();
   for (const s of signals) {
     if (!lookup.has(s.session)) lookup.set(s.session, new Map());
     lookup.get(s.session)!.set(s.niche, s);
-  }
-
-  // Date groups for the two-row header (date spanning colSpan, then AM/PM/EOD)
-  const dateGroups: { dateKey: string; date: string; count: number }[] = [];
-  for (const sess of sessions) {
-    const { date, dateKey } = parseSession(sess);
-    const last = dateGroups[dateGroups.length - 1];
-    if (last?.dateKey === dateKey) last.count++;
-    else dateGroups.push({ dateKey, date, count: 1 });
   }
 
   const selectedSignals: Signal[] = selected
@@ -130,105 +124,116 @@ export default function SignalHeatmap() {
   return (
     <div className="space-y-6">
 
-      {/* ── Heatmap ── */}
+      {/* ── Heatmap card ── */}
       <div className="bg-panel border border-rim rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
           <div>
             <h2 className="text-sm font-semibold text-ink">Signal Trend</h2>
-            <p className="text-xs text-dim mt-0.5">Intensity = confidence · click any session column to drill in</p>
+            <p className="text-xs text-dim mt-0.5">Intensity = confidence · click any column to view session detail</p>
           </div>
           <div className="flex items-center gap-4 text-xs text-dim">
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(34,197,94,0.80)' }} />Bullish
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(34,197,94,0.80)' }} />
+              Bullish
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(234,179,8,0.55)' }} />Neutral
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(234,179,8,0.55)' }} />
+              Neutral
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: 'rgba(239,68,68,0.80)' }} />Bearish
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(239,68,68,0.80)' }} />
+              Bearish
             </span>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="border-collapse">
-            <thead>
-              {/* Row 1 — date labels spanning multiple sessions */}
-              <tr>
-                <th className="w-28" />
-                {dateGroups.map(g => (
-                  <th
-                    key={g.dateKey}
-                    colSpan={g.count}
-                    className="text-[11px] text-dim font-medium pb-1 text-center border-b border-rim/30"
+          {/* CSS grid: label col + one col per session, all equal-width */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `148px repeat(${sessions.length}, ${CELL}px)`,
+              gap: GAP,
+            }}
+          >
+            {/* ── Header row: single rotated label per session ── */}
+            <div style={{ height: 80 }} /> {/* corner spacer */}
+            {sessions.map(sess => {
+              const { dateShort, label } = parseSession(sess);
+              const isSelected = sess === selected;
+              return (
+                <div
+                  key={`hdr-${sess}`}
+                  onClick={() => setSelected(sess)}
+                  className="flex items-end justify-center cursor-pointer select-none"
+                  style={{ height: 80, width: CELL, overflow: 'visible' }}
+                >
+                  <span
+                    className={`text-[10px] whitespace-nowrap transition-colors ${
+                      isSelected ? 'font-semibold text-accent' : 'text-dim'
+                    }`}
+                    style={{
+                      display: 'block',
+                      transform: 'rotate(-50deg)',
+                      transformOrigin: 'bottom center',
+                      marginBottom: 6,
+                    }}
                   >
-                    {g.date}
-                  </th>
-                ))}
-              </tr>
-              {/* Row 2 — AM / PM / EOD labels, clickable */}
-              <tr>
-                <th className="w-28" />
-                {sessions.map(sess => {
-                  const { label } = parseSession(sess);
-                  const isSelected = sess === selected;
-                  return (
-                    <th
-                      key={sess}
-                      onClick={() => setSelected(sess)}
-                      className={`text-[11px] font-semibold pt-1 pb-2 text-center cursor-pointer select-none w-11 transition-colors border-b-2 ${
-                        isSelected
-                          ? 'text-accent border-accent'
-                          : 'text-dim hover:text-ink border-transparent'
-                      }`}
-                    >
-                      {label}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {ALL_NICHES.map(niche => (
-                <tr key={niche}>
-                  <td className="pr-3 py-1">
-                    <span className="text-xs text-dim whitespace-nowrap">
-                      {shortNiche(NICHE_DISPLAY[niche] ?? niche)}
-                    </span>
-                  </td>
-                  {sessions.map(sess => {
-                    const sig = lookup.get(sess)?.get(niche);
-                    const isSelected = sess === selected;
-                    return (
-                      <td key={sess} className="py-1 px-0.5">
-                        <div
-                          onClick={() => setSelected(sess)}
-                          style={sig
-                            ? cellBg(sig.direction, sig.confidence)
-                            : { backgroundColor: 'rgba(100,100,100,0.08)' }
-                          }
-                          className={`w-10 h-7 rounded cursor-pointer transition-transform hover:scale-110 hover:opacity-90 ${
-                            isSelected ? 'ring-1 ring-white/30' : ''
-                          }`}
-                          title={sig
-                            ? `${sig.nicheDisplay} · ${sig.direction} · ${sig.conviction} conviction · conf ${sig.confidence.toFixed(2)}`
-                            : `${NICHE_DISPLAY[niche] ?? niche} · no data`
-                          }
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    {dateShort} {label}
+                  </span>
+                </div>
+              );
+            })}
+
+            {/* ── Data rows: one per niche ── */}
+            {ALL_NICHES.flatMap(niche => [
+              /* Niche label */
+              <div
+                key={`lbl-${niche}`}
+                className="flex items-center pr-2"
+                style={{ height: CELL }}
+              >
+                <span className="text-xs text-dim whitespace-nowrap truncate">
+                  {shortNiche(NICHE_DISPLAY[niche] ?? niche)}
+                </span>
+              </div>,
+
+              /* Session cells */
+              ...sessions.map(sess => {
+                const sig        = lookup.get(sess)?.get(niche);
+                const isSelected = sess === selected;
+                return (
+                  <div
+                    key={`${niche}-${sess}`}
+                    onClick={() => setSelected(sess)}
+                    style={{
+                      height: CELL,
+                      width:  CELL,
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      outline: isSelected ? '2px solid rgba(255,255,255,0.2)' : 'none',
+                      outlineOffset: 1,
+                      ...(sig
+                        ? cellBg(sig.direction, sig.confidence)
+                        : { backgroundColor: 'rgba(255,255,255,0.05)' }),
+                    }}
+                    className="transition-all hover:opacity-80 hover:scale-105"
+                    title={sig
+                      ? `${sig.nicheDisplay} · ${sig.direction} · ${sig.conviction} · ${sig.confidence.toFixed(2)}`
+                      : `${NICHE_DISPLAY[niche] ?? niche} · no data`
+                    }
+                  />
+                );
+              }),
+            ])}
+          </div>
         </div>
       </div>
 
       {/* ── Selected session detail ── */}
       {selected && (
         <section>
-          <div className="flex items-baseline gap-3 mb-3">
+          <div className="flex items-baseline gap-3 mb-3 flex-wrap">
             <h2 className="text-sm font-semibold text-ink">{formatSessionFull(selected)}</h2>
             {selectedSignals.length > 0 && (
               <div className="flex items-center gap-3 text-xs">

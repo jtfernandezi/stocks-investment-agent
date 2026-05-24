@@ -27,6 +27,8 @@ Code nodes reference other nodes by exact name via `$("Node Name")`. Every name 
 | 09_process_post_trade.js | `Parse Orchestrator Output` |
 | Build Watchlist SQL (inline Code) | `Process Post-Trade` |
 | Prepare PM Items (inline Code) | `Process Post-Trade` |
+| letter_build_prompt.js | `Parse Orchestrator Output`, `Build Orchestrator Input`, `Compute Derived Metrics` |
+| letter_store.js | `Build Letter Prompt` |
 
 ---
 
@@ -38,6 +40,7 @@ Two different native OpenAI node versions are used — their output shapes diffe
 |------|---------|-------------|
 | Specialist [Niche] × 8 | v1.3 | `{ message: { content: "..." } }` |
 | Call Orchestrator LLM | v2.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
+| Letter LLM | v1.3 | `{ message: { content: "..." } }` |
 
 ---
 
@@ -121,6 +124,19 @@ Two different native OpenAI node versions are used — their output shapes diffe
       ↓
 [27a] Build Watchlist SQL             (Code inline)
 [27b] Execute Watchlist Update        (Postgres — executes SQL from [27a])
+      ↓ (fans out to two parallel branches)
+      ├──────────────────────────────────────────────────────────────┐
+      │  LETTER GENERATION BRANCH (close sessions only)             │
+      │  [27c] Is Close Session?    (IF: session_id endsWith _close) │
+      │         ↓ TRUE                         ↓ FALSE              │
+      │  [27d] Build Letter Prompt  (Code: letter_build_prompt.js)  │
+      │         ↓                              (silent end)          │
+      │  [27e] Letter LLM           (Native OpenAI node v1.3)        │
+      │         ↓                                                    │
+      │  [27f] Parse & Store Letter (Code: letter_store.js)         │
+      │         ↓                                                    │
+      │  [27g] Store Letter         (Postgres UPSERT investor_letters│
+      └──────────────────────────────────────────────────────────────┘
       ↓
 [28] Is Market Open?                   (IF: session_type is morning or midday)
       ↓ TRUE                   ↓ FALSE
@@ -501,3 +517,40 @@ return payloads.map(p => ({json: p}));
 - Node type: **Execute Workflow** (not HTTP Request)
 - Calls the Post-Mortem workflow (Workflow 3) directly by ID
 - One execution per SELL/COVER payload
+
+---
+
+### [27c] Is Close Session?
+- Node type: IF
+- Condition: `{{ $('Process Post-Trade').first().json.session_id }}` endsWith `_close`
+- TRUE → Build Letter Prompt
+- FALSE → (no output — silent end for morning/midday sessions)
+
+### [27d] Build Letter Prompt
+- Node type: Code (`letter_build_prompt.js`)
+- Reads from `Parse Orchestrator Output`, `Build Orchestrator Input`, `Compute Derived Metrics`
+- Assembles a full system + user prompt with: portfolio metrics, open positions (with P&L), trades executed, all 8 specialist signals, and the orchestrator's session notes
+- Output: `{ system_prompt, user_prompt, session_id }`
+
+### [27e] Letter LLM
+- Node type: **Native OpenAI node v1.3**
+- Model: `gpt-4o-mini`
+- System prompt: `{{ $json.system_prompt }}`
+- User prompt: `{{ $json.user_prompt }}`
+- Output shape: `{ message: { content: "..." } }` (v1.3 format)
+
+### [27f] Parse & Store Letter
+- Node type: Code (`letter_store.js`)
+- Reads `$input.first().json.message.content` (the letter body)
+- SQL-escapes single quotes; reads `session_id` from `Build Letter Prompt`
+- Output: `{ session, body }`
+
+### [27g] Store Letter
+- Node type: Postgres
+- Set `alwaysOutputData: true`
+- Credential: Neon - Stocks Agent
+```sql
+INSERT INTO stocks.investor_letters (session, body)
+VALUES ('{{ $json.session }}', '{{ $json.body }}')
+ON CONFLICT (session) DO UPDATE SET body = EXCLUDED.body, created_at = NOW()
+```

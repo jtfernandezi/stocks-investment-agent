@@ -80,6 +80,8 @@ All JavaScript for Code nodes lives in `/workflows/code/`. Copy contents directl
 | `watchdog_check.js` | Watchdog | [4] Check Signal Flip |
 | `post_mortem_build_input.js` | Post-Mortem | [3] Build Post-Mortem Input |
 | `post_mortem_store.js` | Post-Mortem | [5] Parse & Store Post-Mortem |
+| `letter_build_prompt.js` | Main Analysis | Build Letter Prompt (close sessions only) |
+| `letter_store.js` | Main Analysis | Parse & Store Letter |
 
 Note: the "Attach Feed Niche" node [21] (Main Analysis) uses inline code — see its configuration in `main_analysis_blueprint.md`.
 

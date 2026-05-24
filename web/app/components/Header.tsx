@@ -1,5 +1,6 @@
-import { TrendingUp, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, Clock } from 'lucide-react';
 import { sql } from '@/lib/db';
+import { START_CAPITAL } from '@/lib/constants';
 
 async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
   try { return await fn(); } catch { return fallback; }
@@ -44,13 +45,29 @@ function formatLastRun(session: string): string {
 }
 
 export default async function Header() {
-  const [lastSessionRow] = await safe(() => sql`
-    SELECT session FROM stocks.specialist_signals
-    ORDER BY created_at DESC LIMIT 1
-  `, [] as Record<string, unknown>[]);
+  const [[lastSessionRow], [snap]] = await Promise.all([
+    safe(() => sql`
+      SELECT session FROM stocks.specialist_signals
+      ORDER BY created_at DESC LIMIT 1
+    `, [] as Record<string, unknown>[]),
+    safe(() => sql`
+      SELECT portfolio_value_usd, spy_cumulative_pct
+      FROM stocks.portfolio_snapshots
+      ORDER BY created_at DESC LIMIT 1
+    `, [] as Record<string, unknown>[]),
+  ]);
 
   const lastRun     = lastSessionRow ? formatLastRun(String(lastSessionRow.session)) : '—';
   const nextSession = computeNextSession();
+
+  const spyCumPct      = snap ? parseFloat(String(snap.spy_cumulative_pct)) : NaN;
+  const portfolioValue = snap ? parseFloat(String(snap.portfolio_value_usd)) : NaN;
+  const totalReturnPct = !isNaN(portfolioValue) ? (portfolioValue - START_CAPITAL) / START_CAPITAL * 100 : NaN;
+  const alphaPct       = !isNaN(totalReturnPct) && !isNaN(spyCumPct) ? totalReturnPct - spyCumPct : NaN;
+
+  const spyStr   = isNaN(spyCumPct)  ? '—' : `${spyCumPct  >= 0 ? '+' : ''}${spyCumPct.toFixed(2)}%`;
+  const alphaStr = isNaN(alphaPct)   ? '—' : `${alphaPct   >= 0 ? '+' : ''}${alphaPct.toFixed(2)}%`;
+  const alphaUp  = isNaN(alphaPct) || alphaPct >= 0;
 
   return (
     <header className="h-14 border-b border-rim bg-panel/60 px-6 flex items-center justify-between shrink-0">
@@ -64,14 +81,18 @@ export default async function Header() {
       <div className="flex items-center gap-6">
         <div className="text-right">
           <p className="text-xs text-dim">SPY return</p>
-          <p className="font-mono text-sm text-ink">+3.21%</p>
+          <p className="font-mono text-sm text-ink">{spyStr}</p>
         </div>
         <div className="w-px h-6 bg-rim" />
         <div className="text-right flex items-center gap-2">
-          <TrendingUp size={14} className="text-gain" />
+          {alphaUp
+            ? <TrendingUp size={14} className="text-gain" />
+            : <TrendingDown size={14} className="text-loss" />}
           <div>
             <p className="text-xs text-dim">vs SPY</p>
-            <p className="font-mono text-sm text-gain font-medium">+2.54% above</p>
+            <p className={`font-mono text-sm font-medium ${alphaUp ? 'text-gain' : 'text-loss'}`}>
+              {alphaStr} {isNaN(alphaPct) ? '' : alphaPct >= 0 ? 'above' : 'below'}
+            </p>
           </div>
         </div>
       </div>

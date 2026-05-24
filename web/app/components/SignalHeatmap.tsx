@@ -17,9 +17,6 @@ interface Signal {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const CELL = 40;
-const GAP  = 5;
-
 function cellBg(direction: string, confidence: number): React.CSSProperties {
   const a = (0.2 + confidence * 0.75).toFixed(2);
   if (direction === 'BULLISH') return { backgroundColor: `rgba(34,197,94,${a})` };
@@ -34,9 +31,9 @@ function parseSession(session: string) {
     const slug = rest.join('-');
     const d    = new Date(`${year}-${month}-${day}`);
     return {
-      dateKey:  `${year}-${month}-${day}`,
+      dateKey:   `${year}-${month}-${day}`,
       dateShort: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
-      label:    slug === 'morning' ? 'AM' : slug === 'midday' ? 'PM' : 'EOD',
+      label:     slug === 'morning' ? 'AM' : slug === 'midday' ? 'PM' : 'EOD',
     };
   }
   return { dateKey: session, dateShort: session, label: '' };
@@ -101,6 +98,15 @@ export default function SignalHeatmap() {
     lookup.get(s.session)!.set(s.niche, s);
   }
 
+  // Date groups for header (date label spanning multiple sessions)
+  const dateGroups: { dateKey: string; dateShort: string; count: number }[] = [];
+  for (const sess of sessions) {
+    const { dateKey, dateShort } = parseSession(sess);
+    const last = dateGroups[dateGroups.length - 1];
+    if (last?.dateKey === dateKey) last.count++;
+    else dateGroups.push({ dateKey, dateShort, count: 1 });
+  }
+
   const selectedSignals: Signal[] = selected
     ? ALL_NICHES.map(n => lookup.get(selected)?.get(n)).filter(Boolean) as Signal[]
     : [];
@@ -120,6 +126,9 @@ export default function SignalHeatmap() {
       </div>
     );
   }
+
+  const CELL = 40;
+  const GAP  = 5;
 
   return (
     <div className="space-y-6">
@@ -148,46 +157,53 @@ export default function SignalHeatmap() {
         </div>
 
         <div className="overflow-x-auto">
-          {/* CSS grid: label col + one col per session, all equal-width */}
           <div
             style={{
               display: 'grid',
               gridTemplateColumns: `148px repeat(${sessions.length}, ${CELL}px)`,
-              gap: GAP,
+              rowGap: GAP,
+              columnGap: GAP,
             }}
           >
-            {/* ── Header row: single rotated label per session ── */}
-            <div style={{ height: 80 }} /> {/* corner spacer */}
+            {/* ── Header: date groups row ── */}
+            <div className="flex items-end pb-1">
+              <span className="text-[10px] text-dim/50 uppercase tracking-wider">Sector</span>
+            </div>
+            {dateGroups.map(g => (
+              <div
+                key={g.dateKey}
+                className="flex items-end justify-start pb-1"
+                style={{
+                  gridColumn: `span ${g.count}`,
+                  paddingLeft: 2,
+                }}
+              >
+                <span className="text-[10px] text-dim font-medium whitespace-nowrap">{g.dateShort}</span>
+              </div>
+            ))}
+
+            {/* ── Sub-header: AM / PM / EOD ── */}
+            <div />
             {sessions.map(sess => {
-              const { dateShort, label } = parseSession(sess);
+              const { label } = parseSession(sess);
               const isSelected = sess === selected;
               return (
                 <div
-                  key={`hdr-${sess}`}
+                  key={`sub-${sess}`}
                   onClick={() => setSelected(sess)}
-                  className="flex items-end justify-center cursor-pointer select-none"
-                  style={{ height: 80, width: CELL, overflow: 'visible' }}
+                  className={`flex items-center justify-center cursor-pointer select-none transition-colors text-[10px] font-medium pb-1 border-b ${
+                    isSelected
+                      ? 'text-accent border-accent'
+                      : 'text-dim/60 border-transparent hover:text-dim'
+                  }`}
                 >
-                  <span
-                    className={`text-[10px] whitespace-nowrap transition-colors ${
-                      isSelected ? 'font-semibold text-accent' : 'text-dim'
-                    }`}
-                    style={{
-                      display: 'block',
-                      transform: 'rotate(-50deg)',
-                      transformOrigin: 'bottom center',
-                      marginBottom: 6,
-                    }}
-                  >
-                    {dateShort} {label}
-                  </span>
+                  {label}
                 </div>
               );
             })}
 
-            {/* ── Data rows: one per niche ── */}
+            {/* ── Data rows ── */}
             {ALL_NICHES.flatMap(niche => [
-              /* Niche label */
               <div
                 key={`lbl-${niche}`}
                 className="flex items-center pr-2"
@@ -198,7 +214,6 @@ export default function SignalHeatmap() {
                 </span>
               </div>,
 
-              /* Session cells */
               ...sessions.map(sess => {
                 const sig        = lookup.get(sess)?.get(niche);
                 const isSelected = sess === selected;
@@ -258,7 +273,6 @@ export default function SignalHeatmap() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {selectedSignals.map(s => (
                 <div key={s.niche} className="bg-panel border border-rim rounded-xl p-5 space-y-3">
-                  {/* Top bar */}
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold text-ink">{s.nicheDisplay}</h3>
@@ -282,8 +296,6 @@ export default function SignalHeatmap() {
                       </span>
                     </div>
                   </div>
-
-                  {/* Confidence bar */}
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-dim w-20 shrink-0">Confidence</span>
                     <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
@@ -297,11 +309,7 @@ export default function SignalHeatmap() {
                     </div>
                     <span className="font-mono text-xs text-dim w-8 text-right">{s.confidence.toFixed(2)}</span>
                   </div>
-
-                  {/* Summary */}
                   {s.summary && <p className="text-xs text-dim leading-relaxed">{s.summary}</p>}
-
-                  {/* Picks */}
                   {(s.picks.long_picks.length > 0 || s.picks.short_picks.length > 0) && (
                     <div className="pt-2 border-t border-rim/40 space-y-2">
                       {s.picks.long_picks.length > 0 && (

@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0F1117;
+  --color-panel: #1A1F2E;
+  --color-rim: #2D3748;
+  --color-accent: #3B82F6;
+  --color-gain: #22C55E;
+  --color-loss: #EF4444;
+  --color-ink: #F9FAFB;
+  --color-dim: #9CA3AF;
+}
+
+@theme inline {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-ibm-plex-mono);
+}
+
+body {
+  background-color: #0F1117;
+  color: #F9FAFB;
+}

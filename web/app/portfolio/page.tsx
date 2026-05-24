@@ -1,0 +1,368 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight, AlertTriangle, ShieldCheck } from 'lucide-react';
+import PageShell from '../components/PageShell';
+import CorrelationHeatmap from '../components/CorrelationHeatmap';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+interface Position {
+  ticker: string;
+  side: 'LONG' | 'SHORT';
+  shares: number;
+  entryPrice: number;
+  currentPrice: number;
+  marketValue: number;
+  costBasis: number;
+  pnl: number;
+  pnlPct: number;
+  changeToday: number;
+  nicheDisplay: string;
+  thesis: string | null;
+  conviction: string | null;
+  effectiveConfidence: number | null;
+  stopPct: number | null;
+  stopPrice: number | null;
+  distToStop: number | null;
+  thesisIntact: boolean | null;
+  stopProximity: string | null;
+}
+
+interface CorrPair { ticker_a: string; ticker_b: string; correlation: number; }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function usd(n: number) {
+  return `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function buildMatrix(tickers: string[], pairs: CorrPair[]): number[][] {
+  const n = tickers.length;
+  const idx: Record<string, number> = {};
+  tickers.forEach((t, i) => { idx[t] = i; });
+  const m: number[][] = Array.from<unknown, number[]>({ length: n }, (_, i) =>
+    Array.from<unknown, number>({ length: n }, (_, j) => i === j ? 1 : 0)
+  );
+  for (const pair of pairs) {
+    const i = idx[pair.ticker_a], j = idx[pair.ticker_b];
+    if (i != null && j != null) { m[i][j] = pair.correlation; m[j][i] = pair.correlation; }
+  }
+  return m;
+}
+
+// ── Expandable row ─────────────────────────────────────────────────────────────
+
+function ExpandableRow({ p }: { p: Position }) {
+  const [open, setOpen] = useState(false);
+  const up = p.pnl >= 0;
+
+  const thesisValid = p.thesisIntact ?? true;
+  const nearStop    = p.stopProximity === 'CRITICAL' || p.stopProximity === 'WARNING';
+
+  return (
+    <>
+      <tr
+        className="border-b border-rim/40 hover:bg-ink/[0.03] transition-colors cursor-pointer"
+        onClick={() => setOpen(o => !o)}
+      >
+        <td className="px-5 py-4 w-4">
+          {open ? <ChevronDown size={14} className="text-dim" /> : <ChevronRight size={14} className="text-dim" />}
+        </td>
+        <td className="px-5 py-4">
+          <div className="font-semibold text-ink">{p.ticker}</div>
+          <div className="text-xs text-dim">{p.nicheDisplay}</div>
+        </td>
+        <td className="px-5 py-4">
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
+            {p.side}
+          </span>
+        </td>
+        <td className="px-5 py-4 font-mono text-ink">{p.shares.toFixed(2)}</td>
+        <td className="px-5 py-4 font-mono text-dim">{usd(p.entryPrice)}</td>
+        <td className="px-5 py-4 font-mono text-ink">{usd(p.currentPrice)}</td>
+        <td className={`px-5 py-4 font-mono font-medium ${up ? 'text-gain' : 'text-loss'}`}>
+          {up ? '+' : '−'}{usd(p.pnl)}
+        </td>
+        <td className={`px-5 py-4 font-mono font-medium ${up ? 'text-gain' : 'text-loss'}`}>
+          {up ? '+' : ''}{p.pnlPct.toFixed(2)}%
+        </td>
+        <td className="px-5 py-4 font-mono text-dim">
+          {p.stopPct != null ? `${p.stopPct.toFixed(1)}%` : '—'}
+        </td>
+        <td className={`px-5 py-4 font-mono ${nearStop ? 'text-yellow-400 font-semibold' : 'text-dim'}`}>
+          {p.distToStop != null ? usd(p.distToStop) : '—'}
+        </td>
+        <td className="px-5 py-4 font-mono text-dim">
+          {p.changeToday >= 0 ? '+' : ''}{p.changeToday.toFixed(2)}%
+        </td>
+        <td className="px-5 py-4">
+          {p.effectiveConfidence != null ? (
+            <div className="flex items-center gap-2 min-w-[72px]">
+              <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
+                <div className="h-full bg-accent rounded-full" style={{ width: `${p.effectiveConfidence * 100}%` }} />
+              </div>
+              <span className="font-mono text-xs text-dim">{p.effectiveConfidence.toFixed(2)}</span>
+            </div>
+          ) : <span className="text-dim">—</span>}
+        </td>
+        <td className="px-5 py-4">
+          {thesisValid
+            ? <ShieldCheck size={14} className="text-gain" />
+            : <AlertTriangle size={14} className="text-yellow-400" />}
+        </td>
+        {nearStop ? (
+          <td className="px-5 py-4">
+            <span className="text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">
+              {p.stopProximity}
+            </span>
+          </td>
+        ) : <td className="px-5 py-4" />}
+      </tr>
+
+      {open && (
+        <tr className="border-b border-rim/40 bg-surface/60">
+          <td colSpan={15} className="px-8 py-5">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-2">
+                <p className="text-xs text-dim uppercase tracking-wider font-medium">Orchestrator Entry Reasoning</p>
+                {p.thesis
+                  ? <p className="text-sm text-ink leading-relaxed">{p.thesis}</p>
+                  : <p className="text-xs text-dim italic">No entry reasoning recorded for this position.</p>}
+                <div className="flex items-center gap-2 mt-3">
+                  {thesisValid
+                    ? <span className="flex items-center gap-1.5 text-xs text-gain"><ShieldCheck size={12} /> Thesis intact as of last session</span>
+                    : <span className="flex items-center gap-1.5 text-xs text-yellow-400"><AlertTriangle size={12} /> Thesis weakening — under review</span>}
+                </div>
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs text-dim uppercase tracking-wider font-medium">Position Details</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {[
+                    { l: 'Stop %',      v: p.stopPct  != null ? `${p.stopPct.toFixed(1)}%`  : '—' },
+                    { l: 'Stop Price',  v: p.stopPrice != null ? usd(p.stopPrice)            : '—' },
+                    { l: 'Conviction',  v: p.conviction ?? '—' },
+                    { l: 'Conf Score',  v: p.effectiveConfidence != null ? p.effectiveConfidence.toFixed(2) : '—' },
+                    { l: 'Today Δ',     v: `${p.changeToday >= 0 ? '+' : ''}${p.changeToday.toFixed(2)}%` },
+                    { l: 'Market Val',  v: usd(p.marketValue) },
+                  ].map(({ l, v }) => (
+                    <div key={l} className="bg-panel rounded-lg p-2">
+                      <div className="text-dim">{l}</div>
+                      <div className="text-ink font-mono font-medium">{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default function PortfolioPage() {
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [corrPairs, setCorrPairs] = useState<CorrPair[]>([]);
+  const [loading, setLoading]     = useState(true);
+
+  useEffect(() => {
+    fetch('/api/positions')
+      .then(r => r.json())
+      .then(data => setPositions((data.positions ?? []) as Position[]))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (positions.length === 0) return;
+    const tickers = positions.map(p => p.ticker).join(',');
+    fetch(`/api/correlation?tickers=${tickers}`)
+      .then(r => r.json())
+      .then(data => setCorrPairs((data.pairs ?? []) as CorrPair[]))
+      .catch(() => {});
+  }, [positions]);
+
+  // ── Computed aggregates ────────────────────────────────────────
+  const totalLong      = positions.filter(p => p.side === 'LONG').reduce((s, p) => s + p.marketValue, 0);
+  const totalShort     = positions.filter(p => p.side === 'SHORT').reduce((s, p) => s + Math.abs(p.marketValue), 0);
+  const unrealizedPnL  = positions.reduce((s, p) => s + p.pnl, 0);
+  const investedCap    = positions.reduce((s, p) => s + Math.abs(p.marketValue), 0) || 1;
+
+  const posWeights = [...positions]
+    .map(p => ({ ticker: p.ticker, side: p.side, weight: Math.abs(p.marketValue) / investedCap * 100 }))
+    .sort((a, b) => b.weight - a.weight);
+  const top3Conc = posWeights.slice(0, 3).reduce((s, p) => s + p.weight, 0);
+  const hhi      = posWeights.reduce((s, p) => s + (p.weight / 100) ** 2, 0);
+
+  // ── Correlation heatmap ────────────────────────────────────────
+  const heatTickers = positions.map(p => ({ ticker: p.ticker, side: p.side === 'LONG' ? 'L' : 'S' as 'L' | 'S' }));
+  const heatMatrix  = buildMatrix(heatTickers.map(t => t.ticker), corrPairs);
+
+  // ── Sector exposure bars ───────────────────────────────────────
+  const sectorMap: Record<string, { long: number; short: number }> = {};
+  for (const p of positions) {
+    if (!sectorMap[p.nicheDisplay]) sectorMap[p.nicheDisplay] = { long: 0, short: 0 };
+    if (p.side === 'LONG') sectorMap[p.nicheDisplay].long  += p.marketValue;
+    else                   sectorMap[p.nicheDisplay].short += Math.abs(p.marketValue);
+  }
+  const sectorExposure = Object.entries(sectorMap).map(([niche, v]) => ({
+    niche,
+    longUsd:  v.long,
+    shortUsd: v.short,
+    pct:      (v.long + v.short) / (investedCap || 1) * 100,
+  }));
+
+  if (loading) {
+    return (
+      <PageShell>
+        <div className="flex items-center justify-center py-20">
+          <p className="text-dim text-sm">Loading live positions…</p>
+        </div>
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell>
+      {/* Header */}
+      <div className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Portfolio</h1>
+          <p className="text-sm text-dim mt-1">
+            {positions.filter(p => p.side === 'LONG').length} long ·{' '}
+            {positions.filter(p => p.side === 'SHORT').length} short · unrealized P&amp;L:{' '}
+            <span className={unrealizedPnL >= 0 ? 'text-gain' : 'text-loss'}>
+              {unrealizedPnL >= 0 ? '+' : '−'}${Math.abs(unrealizedPnL).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          </p>
+        </div>
+        <div className="flex gap-6 text-sm">
+          <div>
+            <p className="text-xs text-dim">Long Exposure</p>
+            <p className="font-mono text-ink">${totalLong.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dim">Short Exposure</p>
+            <p className="font-mono text-loss">${totalShort.toLocaleString('en-US', { maximumFractionDigits: 0 })} / $12,000 max</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Positions table */}
+      <div className="bg-panel border border-rim rounded-xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-rim">
+          <p className="text-xs text-dim">Click any row to see orchestrator reasoning · Live data from Alpaca</p>
+        </div>
+        {positions.length === 0 ? (
+          <div className="px-5 py-10 text-center text-xs text-dim">No open positions</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-rim">
+                  <th className="px-5 py-3 w-4" />
+                  {['Ticker', 'Side', 'Shares', 'Entry', 'Current', 'P&L', 'P&L %', 'Stop', 'Dist to Stop', 'Day Δ', 'Confidence', 'Thesis', 'Alert'].map(h => (
+                    <th key={h} className="text-left text-xs text-dim font-medium uppercase tracking-wider px-5 py-3 whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {positions.map(p => <ExpandableRow key={p.ticker} p={p} />)}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Concentration Analysis */}
+      {positions.length > 0 && (
+        <div className="bg-panel border border-rim rounded-xl p-5">
+          <div className="mb-4">
+            <h2 className="text-sm font-semibold text-ink">Concentration Analysis</h2>
+            <p className="text-xs text-dim mt-0.5">Weights relative to invested capital · lower HHI = more diversified</p>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+              <p className="text-xs text-dim mb-1">Largest Position</p>
+              <p className="font-mono text-base font-semibold text-ink">
+                {posWeights[0]?.ticker}{' '}
+                <span className="text-dim font-normal text-sm">{posWeights[0]?.weight.toFixed(1)}%</span>
+              </p>
+              <p className="text-xs text-dim/60 mt-0.5">of invested capital</p>
+            </div>
+            <div>
+              <p className="text-xs text-dim mb-1">Top 3 Concentration</p>
+              <p className={`font-mono text-base font-semibold ${top3Conc > 70 ? 'text-yellow-400' : 'text-ink'}`}>
+                {top3Conc.toFixed(1)}%
+              </p>
+              <p className="text-xs text-dim/60 mt-0.5">{posWeights.slice(0, 3).map(p => p.ticker).join(' + ')}</p>
+            </div>
+            <div>
+              <p className="text-xs text-dim mb-1">Herfindahl Index</p>
+              <p className={`font-mono text-base font-semibold ${hhi > 0.25 ? 'text-yellow-400' : 'text-ink'}`}>
+                {hhi.toFixed(3)}
+              </p>
+              <p className="text-xs text-dim/60 mt-0.5">
+                {hhi > 0.25 ? 'high concentration' : hhi > 0.10 ? 'moderate concentration' : 'well diversified'}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-dim mb-1">Position Count</p>
+              <p className="font-mono text-base font-semibold text-ink">{positions.length}</p>
+              <p className="text-xs text-dim/60 mt-0.5">
+                of 12 max · {positions.filter(p => p.side === 'LONG').length}L / {positions.filter(p => p.side === 'SHORT').length}S
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 pt-4 border-t border-rim/40 space-y-2">
+            {posWeights.map(p => (
+              <div key={p.ticker} className="flex items-center gap-3">
+                <span className={`font-mono text-xs w-12 ${p.side === 'LONG' ? 'text-gain' : 'text-loss'}`}>{p.ticker}</span>
+                <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${p.side === 'LONG' ? 'bg-gain/50' : 'bg-loss/50'}`}
+                    style={{ width: `${p.weight}%` }}
+                  />
+                </div>
+                <span className="font-mono text-xs text-dim w-10 text-right">{p.weight.toFixed(1)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sector exposure */}
+      {sectorExposure.length > 0 && (
+        <div className="bg-panel border border-rim rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-ink mb-4">Sector Exposure</h2>
+          <div className="space-y-3">
+            {sectorExposure.sort((a, b) => b.pct - a.pct).map(s => (
+              <div key={s.niche} className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-dim">{s.niche}</span>
+                  <span className="text-ink font-mono">{s.pct.toFixed(1)}%</span>
+                </div>
+                <div className="flex gap-1 h-1.5">
+                  {s.longUsd  > 0 && <div className="h-full bg-gain/60 rounded-l-full"  style={{ flex: s.longUsd }} />}
+                  {s.shortUsd > 0 && <div className="h-full bg-loss/60 rounded-r-full"  style={{ flex: s.shortUsd }} />}
+                </div>
+              </div>
+            ))}
+            <div className="flex gap-3 text-xs text-dim pt-1">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gain/60" />Long</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-loss/60" />Short</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Correlation heatmap — only when we have ≥2 positions */}
+      {heatTickers.length >= 2 && (
+        <CorrelationHeatmap tickers={heatTickers} matrix={heatMatrix} />
+      )}
+    </PageShell>
+  );
+}

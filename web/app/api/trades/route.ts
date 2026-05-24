@@ -18,7 +18,7 @@ export async function GET() {
         entry_effective_confidence::float  AS entry_effective_confidence,
         sector_accuracy, stock_selection_quality, entry_timing, exit_timing
       FROM stocks.trade_lessons
-      ORDER BY exit_date DESC NULLS LAST, created_at DESC
+      ORDER BY exit_date DESC NULLS LAST, generated_at DESC
     `;
     return NextResponse.json({ trades: rows });
   } catch (err) {

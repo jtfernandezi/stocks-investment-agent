@@ -64,7 +64,7 @@ export default async function ResearchPage() {
         ss.niche, ss.direction, ss.conviction,
         ss.confidence::float, ss.materiality,
         ss.top_picks, ss.summary, ss.session,
-        sa.hit_rate_30d::float  AS hit_rate,
+        sa.hit_rate::float      AS hit_rate,
         sa.total_signals
       FROM stocks.specialist_signals ss
       LEFT JOIN stocks.specialist_accuracy sa ON sa.niche = ss.niche

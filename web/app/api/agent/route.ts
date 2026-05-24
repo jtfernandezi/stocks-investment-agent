@@ -12,9 +12,9 @@ export async function GET() {
   const [accuracy, patterns, sessions] = await Promise.all([
 
     safe(() => sql`
-      SELECT niche, hit_rate_30d::float, scaling_factor::float,
+      SELECT niche, hit_rate::float AS hit_rate_30d, scaling_factor::float,
              calibration_error::float, total_signals,
-             avg_reported_confidence_30d::float
+             avg_reported_confidence::float AS avg_reported_confidence_30d
       FROM stocks.specialist_accuracy
       ORDER BY hit_rate_30d DESC NULLS LAST
     `, [] as Record<string, unknown>[]),

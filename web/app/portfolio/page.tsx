@@ -115,6 +115,52 @@ function SectorTreemap({ cells }: { cells: SectorCell[] }) {
   );
 }
 
+// ── Bubble chart ──────────────────────────────────────────────────────────────
+
+interface Bubble { ticker: string; side: 'LONG' | 'SHORT'; weight: number; pnlPct: number; }
+
+function BubbleChart({ bubbles }: { bubbles: Bubble[] }) {
+  if (bubbles.length === 0) return null;
+  const maxW = Math.max(...bubbles.map(b => b.weight));
+  const MIN_D = 44, MAX_D = 116;
+
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-3 py-2">
+      {bubbles.map(b => {
+        const d    = MIN_D + Math.sqrt(b.weight / maxW) * (MAX_D - MIN_D);
+        const isLg = d >= 80;
+        const isMd = d >= 58 && d < 80;
+        const isLong = b.side === 'LONG';
+        const pnlUp  = b.pnlPct >= 0;
+
+        return (
+          <div
+            key={b.ticker}
+            style={{ width: d, height: d }}
+            className={`rounded-full flex flex-col items-center justify-center shrink-0 border-2 transition-transform hover:scale-105 ${
+              isLong ? 'bg-gain/10 border-gain/30' : 'bg-loss/10 border-loss/30'
+            }`}
+          >
+            <span className={`font-mono font-bold text-ink leading-none ${isLg ? 'text-sm' : isMd ? 'text-xs' : 'text-[10px]'}`}>
+              {b.ticker}
+            </span>
+            {isMd || isLg ? (
+              <span className={`font-mono leading-none mt-0.5 ${isLg ? 'text-[11px]' : 'text-[9px]'} text-dim`}>
+                {b.weight.toFixed(1)}%
+              </span>
+            ) : null}
+            {isLg && (
+              <span className={`font-mono font-semibold leading-none mt-0.5 text-[11px] ${pnlUp ? 'text-gain' : 'text-loss'}`}>
+                {pnlUp ? '+' : ''}{b.pnlPct.toFixed(1)}%
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function usd(n: number) {
@@ -276,7 +322,7 @@ export default function PortfolioPage() {
   const investedCap    = positions.reduce((s, p) => s + Math.abs(p.marketValue), 0) || 1;
 
   const posWeights = [...positions]
-    .map(p => ({ ticker: p.ticker, side: p.side, weight: Math.abs(p.marketValue) / investedCap * 100 }))
+    .map(p => ({ ticker: p.ticker, side: p.side, weight: Math.abs(p.marketValue) / investedCap * 100, pnlPct: p.pnlPct }))
     .sort((a, b) => b.weight - a.weight);
   const top3Conc = posWeights.slice(0, 3).reduce((s, p) => s + p.weight, 0);
   const hhi      = posWeights.reduce((s, p) => s + (p.weight / 100) ** 2, 0);
@@ -402,19 +448,9 @@ export default function PortfolioPage() {
               </p>
             </div>
           </div>
-          <div className="mt-5 pt-4 border-t border-rim/40 space-y-2">
-            {posWeights.map(p => (
-              <div key={p.ticker} className="flex items-center gap-3">
-                <span className={`font-mono text-xs w-12 ${p.side === 'LONG' ? 'text-gain' : 'text-loss'}`}>{p.ticker}</span>
-                <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${p.side === 'LONG' ? 'bg-gain/50' : 'bg-loss/50'}`}
-                    style={{ width: `${p.weight}%` }}
-                  />
-                </div>
-                <span className="font-mono text-xs text-dim w-10 text-right">{p.weight.toFixed(1)}%</span>
-              </div>
-            ))}
+          <div className="mt-5 pt-4 border-t border-rim/40">
+            <p className="text-xs text-dim mb-1">Circle area ∝ portfolio weight · P&L shown inside larger bubbles</p>
+            <BubbleChart bubbles={posWeights} />
           </div>
         </div>
       )}

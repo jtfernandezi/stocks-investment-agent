@@ -31,7 +31,7 @@ export default function Sidebar() {
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 h-screen sticky top-0 bg-panel border-r border-rim flex flex-col transition-all duration-200`}>
       {/* Header */}
-      <div className={`py-5 border-b border-rim flex items-center gap-2.5 ${collapsed ? 'px-3 justify-between' : 'px-5'}`}>
+      <div className={`py-5 border-b border-rim flex items-center gap-2.5 ${collapsed ? 'px-3 justify-center' : 'px-5'}`}>
         <BotMessageSquare size={20} className="text-accent shrink-0" />
         {!collapsed && <span className="font-semibold text-ink tracking-tight flex-1">Alpha Agent</span>}
         {!collapsed && (
@@ -39,13 +39,6 @@ export default function Sidebar() {
             Paper
           </span>
         )}
-        <button
-          onClick={() => setCollapsed(c => !c)}
-          className={`flex items-center justify-center w-7 h-7 rounded-md text-dim hover:text-ink hover:bg-ink/5 transition-colors shrink-0 ${collapsed ? '' : 'ml-1'}`}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-        </button>
       </div>
 
       {/* Nav */}
@@ -72,8 +65,18 @@ export default function Sidebar() {
         })}
       </nav>
 
+      {/* Toggle bar */}
+      <button
+        onClick={() => setCollapsed(c => !c)}
+        className="w-full flex items-center justify-center gap-2 py-2.5 text-dim hover:text-ink hover:bg-ink/5 border-t border-rim transition-colors"
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        {collapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+        {!collapsed && <span className="text-xs">Collapse</span>}
+      </button>
+
       {/* Footer */}
-      <div className={`py-4 border-t border-rim flex items-center ${collapsed ? 'justify-center px-3' : 'px-5 gap-2'}`}>
+      <div className={`py-3 border-t border-rim flex items-center ${collapsed ? 'justify-center px-3' : 'px-5 gap-2'}`}>
         <span className="w-2 h-2 rounded-full bg-gain animate-pulse shrink-0" title="Agent running" />
         {!collapsed && <span className="text-xs text-dim">Agent running</span>}
       </div>

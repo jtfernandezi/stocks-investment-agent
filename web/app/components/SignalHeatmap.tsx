@@ -17,14 +17,14 @@ interface Signal {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Higher confidence → darker (lower lightness) and more saturated.
-// Range: conf 0 → light/pale · conf 1 → dark/vivid
-function cellBg(direction: string, confidence: number): React.CSSProperties {
-  const sat = Math.round(40 + confidence * 35);  // 40–75%
-  const lit = Math.round(58 - confidence * 32);  // 58–26%
+// n is a 0–1 normalised value (not raw confidence).
+// 0 → lightest/palest · 1 → darkest/most vivid
+function cellBg(direction: string, n: number): React.CSSProperties {
+  const sat = Math.round(25 + n * 55);  // 25–80%
+  const lit = Math.round(65 - n * 43);  // 65–22%
   if (direction === 'BULLISH') return { backgroundColor: `hsl(142,${sat}%,${lit}%)` };
   if (direction === 'BEARISH') return { backgroundColor: `hsl(4,${sat}%,${lit}%)` };
-  return { backgroundColor: `hsl(45,${Math.round(35 + confidence * 30)}%,${Math.round(52 - confidence * 24)}%)` };
+  return { backgroundColor: `hsl(45,${Math.round(30 + n * 40)}%,${Math.round(60 - n * 35)}%)` };
 }
 
 // Session format: "2026-05-19_morning" | "2026-05-19_midday" | "2026-05-19_close"
@@ -103,6 +103,14 @@ export default function SignalHeatmap() {
     lookup.get(s.session)!.set(s.niche, s);
   }
 
+  // Normalise confidence across the entire dataset so the full color
+  // range is always used, regardless of how clustered the values are.
+  const confs = signals.map(s => s.confidence);
+  const minC  = confs.length ? Math.min(...confs) : 0;
+  const maxC  = confs.length ? Math.max(...confs) : 1;
+  const span  = maxC - minC > 0.02 ? maxC - minC : 1;
+  const norm  = (c: number) => Math.max(0, Math.min(1, (c - minC) / span));
+
   // Date groups for header (date label spanning multiple sessions)
   const dateGroups: { dateKey: string; dateShort: string; count: number }[] = [];
   for (const sess of sessions) {
@@ -146,18 +154,23 @@ export default function SignalHeatmap() {
             <p className="text-xs text-dim mt-0.5">Intensity = confidence · click any column to view session detail</p>
           </div>
           <div className="flex items-center gap-4 text-xs text-dim">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(142,68%,34%)' }} />
-              Bullish
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(142,25%,65%)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(142,52%,44%)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(142,80%,22%)' }} />
+              <span className="ml-1">Bullish</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(45,55%,44%)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(45,50%,43%)' }} />
               Neutral
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(4,68%,34%)' }} />
-              Bearish
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(4,25%,65%)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(4,52%,44%)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(4,80%,22%)' }} />
+              <span className="ml-1">Bearish</span>
             </span>
+            <span className="text-dim/50 text-[10px]">lighter = lower conf · darker = higher conf</span>
           </div>
         </div>
 
@@ -234,7 +247,7 @@ export default function SignalHeatmap() {
                       outline: isSelected ? '2px solid rgba(255,255,255,0.2)' : 'none',
                       outlineOffset: 1,
                       ...(sig
-                        ? cellBg(sig.direction, sig.confidence)
+                        ? cellBg(sig.direction, norm(sig.confidence))
                         : { backgroundColor: 'rgba(255,255,255,0.05)' }),
                     }}
                     className="transition-all hover:opacity-80 hover:scale-105"

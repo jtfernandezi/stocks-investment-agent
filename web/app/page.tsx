@@ -52,18 +52,14 @@ export default async function Dashboard() {
   const alphaPct     = totalReturnPct - spyCumPct;
 
   // ── Equity curve data ─────────────────────────────────────────
-  const spyRef      = [...snapshots].reverse().find(r => parseFloat(String(r.spy_cumulative_pct)) !== 0);
-  const spyRefPrice = spyRef ? parseFloat(String(spyRef.spy_price))          : null;
-  const spyRefCum   = spyRef ? parseFloat(String(spyRef.spy_cumulative_pct)) : null;
-  const equityData  = [
+  // spy_cumulative_pct = SPY total return % since portfolio start.
+  // Hypothetical $60k SPY investment = START_CAPITAL × (1 + pct/100).
+  const equityData = [
     { date: 'Start', portfolio: START_CAPITAL, spy: START_CAPITAL },
     ...snapshots.map(row => {
       const portfolio = parseFloat(String(row.portfolio_value_usd));
-      let spy = START_CAPITAL;
-      if (spyRefPrice && spyRefCum != null) {
-        const p = parseFloat(String(row.spy_price));
-        spy = START_CAPITAL * (1 + spyRefCum / 100) * (p / spyRefPrice);
-      }
+      const spyCumPct = parseFloat(String(row.spy_cumulative_pct));
+      const spy = isNaN(spyCumPct) ? START_CAPITAL : START_CAPITAL * (1 + spyCumPct / 100);
       const d = new Date(String(row.date));
       return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), portfolio, spy };
     }),

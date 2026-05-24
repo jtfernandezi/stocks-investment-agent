@@ -24,28 +24,30 @@ function cellBg(direction: string, confidence: number): React.CSSProperties {
   return { backgroundColor: `rgba(234,179,8,${(0.3 + confidence * 0.4).toFixed(2)})` };
 }
 
+// Session format: "2026-05-19_morning" | "2026-05-19_midday" | "2026-05-19_close"
+// Watchdog variant:  "2026-05-19_morning_watchdog"
 function parseSession(session: string) {
-  const parts = session.split('-');
-  if (parts.length >= 4) {
-    const [year, month, day, ...rest] = parts;
-    const slug = rest.join('-');
-    const d    = new Date(`${year}-${month}-${day}`);
+  const idx = session.indexOf('_');
+  if (idx > 0) {
+    const datePart = session.slice(0, idx);
+    const slug     = session.slice(idx + 1).split('_')[0]; // strip _watchdog suffix
+    const d        = new Date(`${datePart}T00:00:00Z`);
     return {
-      dateKey:   `${year}-${month}-${day}`,
+      dateKey:   datePart,
       dateShort: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
       label:     slug === 'morning' ? 'AM' : slug === 'midday' ? 'PM' : 'EOD',
     };
   }
-  return { dateKey: session, dateShort: session, label: '' };
+  return { dateKey: session, dateShort: session, label: '—' };
 }
 
 function formatSessionFull(session: string): string {
-  const parts = session.split('-');
-  if (parts.length >= 4) {
-    const [year, month, day, ...rest] = parts;
-    const slug  = rest.join(' ');
-    const label = slug.charAt(0).toUpperCase() + slug.slice(1);
-    const d     = new Date(`${year}-${month}-${day}`);
+  const idx = session.indexOf('_');
+  if (idx > 0) {
+    const datePart = session.slice(0, idx);
+    const slug     = session.slice(idx + 1).split('_')[0];
+    const label    = slug.charAt(0).toUpperCase() + slug.slice(1);
+    const d        = new Date(`${datePart}T00:00:00Z`);
     return `${label} · ${d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
   }
   return session;

@@ -17,11 +17,14 @@ interface Signal {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Higher confidence → darker (lower lightness) and more saturated.
+// Range: conf 0 → light/pale · conf 1 → dark/vivid
 function cellBg(direction: string, confidence: number): React.CSSProperties {
-  const a = (0.2 + confidence * 0.75).toFixed(2);
-  if (direction === 'BULLISH') return { backgroundColor: `rgba(34,197,94,${a})` };
-  if (direction === 'BEARISH') return { backgroundColor: `rgba(239,68,68,${a})` };
-  return { backgroundColor: `rgba(234,179,8,${(0.3 + confidence * 0.4).toFixed(2)})` };
+  const sat = Math.round(40 + confidence * 35);  // 40–75%
+  const lit = Math.round(58 - confidence * 32);  // 58–26%
+  if (direction === 'BULLISH') return { backgroundColor: `hsl(142,${sat}%,${lit}%)` };
+  if (direction === 'BEARISH') return { backgroundColor: `hsl(4,${sat}%,${lit}%)` };
+  return { backgroundColor: `hsl(45,${Math.round(35 + confidence * 30)}%,${Math.round(52 - confidence * 24)}%)` };
 }
 
 // Session format: "2026-05-19_morning" | "2026-05-19_midday" | "2026-05-19_close"
@@ -144,15 +147,15 @@ export default function SignalHeatmap() {
           </div>
           <div className="flex items-center gap-4 text-xs text-dim">
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(34,197,94,0.80)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(142,68%,34%)' }} />
               Bullish
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(234,179,8,0.55)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(45,55%,44%)' }} />
               Neutral
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'rgba(239,68,68,0.80)' }} />
+              <span className="inline-block w-3 h-3 rounded" style={{ backgroundColor: 'hsl(4,68%,34%)' }} />
               Bearish
             </span>
           </div>

@@ -11,7 +11,7 @@ export async function GET() {
         ss.niche, ss.direction, ss.conviction,
         ss.confidence::float, ss.materiality,
         ss.top_picks, ss.summary, ss.session, ss.created_at,
-        sa.hit_rate_30d::float  AS hit_rate,
+        sa.hit_rate::float      AS hit_rate,
         sa.scaling_factor::float AS scaling_factor,
         sa.total_signals
       FROM stocks.specialist_signals ss

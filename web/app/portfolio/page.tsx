@@ -31,6 +31,90 @@ interface Position {
 
 interface CorrPair { ticker_a: string; ticker_b: string; correlation: number; }
 
+// ── Sector treemap ────────────────────────────────────────────────────────────
+
+interface SectorCell {
+  niche: string;
+  longUsd: number;
+  shortUsd: number;
+  total: number;
+  pct: number;
+}
+
+function shortLabel(niche: string): string {
+  return niche
+    .replace('Data Centers & AI Infrastructure', 'Data Centers')
+    .replace('AI & Semiconductors', 'AI & Semis')
+    .replace('Cloud Hyperscalers', 'Cloud')
+    .replace('Copper / Critical Minerals', 'Copper')
+    .replace('Nuclear / Uranium', 'Nuclear');
+}
+
+function SectorBlock({ cell, rowTotal }: { cell: SectorCell; rowTotal: number }) {
+  const hasLong  = cell.longUsd  > 0;
+  const hasShort = cell.shortUsd > 0;
+  const longFrac  = cell.total > 0 ? cell.longUsd  / cell.total : 0;
+  const shortFrac = cell.total > 0 ? cell.shortUsd / cell.total : 0;
+
+  const dominantColor = !hasShort ? 'bg-gain/[0.08]'
+                      : !hasLong  ? 'bg-loss/[0.08]'
+                      : longFrac >= 0.5 ? 'bg-gain/[0.05]'
+                      : 'bg-loss/[0.05]';
+
+  return (
+    <div
+      className={`relative flex flex-col justify-between rounded-lg border border-rim/30 overflow-hidden p-2.5 ${dominantColor}`}
+      style={{ flex: cell.total / rowTotal, minWidth: 0 }}
+    >
+      {/* Sector label + total % */}
+      <div className="min-w-0">
+        <p className="text-[11px] font-medium text-dim leading-tight truncate">{shortLabel(cell.niche)}</p>
+        <p className="text-xl font-bold font-mono text-ink mt-0.5 leading-none">{cell.pct.toFixed(1)}%</p>
+      </div>
+
+      {/* Long / short amounts */}
+      <div className="mt-2 space-y-0.5">
+        {hasLong  && <p className="text-[11px] font-mono text-gain">L ${(cell.longUsd  / 1000).toFixed(1)}k</p>}
+        {hasShort && <p className="text-[11px] font-mono text-loss">S ${(cell.shortUsd / 1000).toFixed(1)}k</p>}
+
+        {/* Long / short split bar */}
+        <div className="flex h-1 mt-1 rounded-full overflow-hidden gap-px">
+          {hasLong  && <div className="bg-gain/60" style={{ flex: longFrac }}  />}
+          {hasShort && <div className="bg-loss/60" style={{ flex: shortFrac }} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectorTreemap({ cells }: { cells: SectorCell[] }) {
+  if (cells.length === 0) return null;
+
+  const sorted  = [...cells].sort((a, b) => b.total - a.total);
+  const grand   = sorted.reduce((s, c) => s + c.total, 0) || 1;
+  const mid     = Math.ceil(sorted.length / 2);
+  const rows    = sorted.length <= 3
+    ? [sorted]
+    : [sorted.slice(0, mid), sorted.slice(mid)];
+  const rowTotals = rows.map(r => r.reduce((s, c) => s + c.total, 0));
+
+  return (
+    <div className="flex flex-col gap-1.5" style={{ height: 280 }}>
+      {rows.map((row, ri) => (
+        <div
+          key={ri}
+          className="flex gap-1.5"
+          style={{ flex: rowTotals[ri] / grand }}
+        >
+          {row.map(cell => (
+            <SectorBlock key={cell.niche} cell={cell} rowTotal={rowTotals[ri]} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function usd(n: number) {
@@ -212,6 +296,7 @@ export default function PortfolioPage() {
     niche,
     longUsd:  v.long,
     shortUsd: v.short,
+    total:    v.long + v.short,
     pct:      (v.long + v.short) / (investedCap || 1) * 100,
   }));
 
@@ -334,28 +419,20 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      {/* Sector exposure */}
+      {/* Sector exposure treemap */}
       {sectorExposure.length > 0 && (
         <div className="bg-panel border border-rim rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-ink mb-4">Sector Exposure</h2>
-          <div className="space-y-3">
-            {sectorExposure.sort((a, b) => b.pct - a.pct).map(s => (
-              <div key={s.niche} className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-dim">{s.niche}</span>
-                  <span className="text-ink font-mono">{s.pct.toFixed(1)}%</span>
-                </div>
-                <div className="flex gap-1 h-1.5">
-                  {s.longUsd  > 0 && <div className="h-full bg-gain/60 rounded-l-full"  style={{ flex: s.longUsd }} />}
-                  {s.shortUsd > 0 && <div className="h-full bg-loss/60 rounded-r-full"  style={{ flex: s.shortUsd }} />}
-                </div>
-              </div>
-            ))}
-            <div className="flex gap-3 text-xs text-dim pt-1">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-gain/60" />Long</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-loss/60" />Short</span>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-ink">Sector Exposure</h2>
+              <p className="text-xs text-dim mt-0.5">Block size = % of invested capital · bar = long / short split</p>
+            </div>
+            <div className="flex gap-3 text-xs text-dim">
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-gain/60" />Long</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm bg-loss/60" />Short</span>
             </div>
           </div>
+          <SectorTreemap cells={sectorExposure} />
         </div>
       )}
 

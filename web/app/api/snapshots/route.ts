@@ -19,25 +19,14 @@ export async function GET() {
 
     if (rows.length === 0) return NextResponse.json([]);
 
-    // Find a reference row with a valid (non-zero) SPY cumulative return
-    const spyRef = [...rows].reverse().find(r => parseFloat(String(r.spy_cumulative_pct)) !== 0);
-    const spyRefPrice  = spyRef ? parseFloat(String(spyRef.spy_price))          : null;
-    const spyRefCumPct = spyRef ? parseFloat(String(spyRef.spy_cumulative_pct)) : null;
-
     const points = [
-      // synthetic start point
       { date: 'Start', portfolio: START_CAPITAL, spy: START_CAPITAL },
       ...rows.map(row => {
         const portfolio = parseFloat(String(row.portfolio_value_usd));
-        let spy = START_CAPITAL;
-        if (spyRefPrice && spyRefCumPct != null) {
-          const spyPrice     = parseFloat(String(row.spy_price));
-          const spyRefIndexed = START_CAPITAL * (1 + spyRefCumPct / 100);
-          spy = spyRefIndexed * (spyPrice / spyRefPrice);
-        }
-        const d     = new Date(String(row.date));
-        const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-        return { date: label, portfolio, spy };
+        const spyCumPct = parseFloat(String(row.spy_cumulative_pct));
+        const spy = isNaN(spyCumPct) ? START_CAPITAL : START_CAPITAL * (1 + spyCumPct / 100);
+        const d   = new Date(String(row.date));
+        return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), portfolio, spy };
       }),
     ];
 

@@ -115,48 +115,79 @@ function SectorTreemap({ cells }: { cells: SectorCell[] }) {
   );
 }
 
-// ── Bubble chart ──────────────────────────────────────────────────────────────
+// ── Waffle grid ───────────────────────────────────────────────────────────────
 
-interface Bubble { ticker: string; side: 'LONG' | 'SHORT'; weight: number; pnlPct: number; }
+const PALETTE = [
+  '#60A5FA', '#A78BFA', '#FBBF24', '#34D399', '#F472B6',
+  '#22D3EE', '#FB923C', '#A3E635', '#E879F9', '#2DD4BF',
+  '#F87171', '#93C5FD',
+];
 
-function BubbleChart({ bubbles }: { bubbles: Bubble[] }) {
-  if (bubbles.length === 0) return null;
-  const maxW = Math.max(...bubbles.map(b => b.weight));
-  const MIN_D = 44, MAX_D = 116;
+interface WaffleEntry { ticker: string; side: 'LONG' | 'SHORT'; color: string; squares: number; weight: number; pnlPct: number; }
+
+function WaffleGrid({ positions, totalEquity }: { positions: Position[]; totalEquity: number }) {
+  if (positions.length === 0) return null;
+
+  const sorted = [...positions].sort((a, b) => Math.abs(b.marketValue) - Math.abs(a.marketValue));
+
+  const entries: WaffleEntry[] = sorted.map((p, i) => {
+    const weight = Math.abs(p.marketValue) / totalEquity * 100;
+    return {
+      ticker:  p.ticker,
+      side:    p.side,
+      color:   PALETTE[i % PALETTE.length],
+      squares: Math.max(1, Math.round(weight)),
+      weight,
+      pnlPct:  p.pnlPct,
+    };
+  });
+
+  // Build flat array of 100 cells — positions first, then null for cash
+  const cells: (WaffleEntry | null)[] = [];
+  for (const e of entries) {
+    for (let i = 0; i < e.squares; i++) cells.push(e);
+  }
+  while (cells.length < 100) cells.push(null);
+  const cashSquares = cells.filter(c => c === null).length;
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3 py-2">
-      {bubbles.map(b => {
-        const d    = MIN_D + Math.sqrt(b.weight / maxW) * (MAX_D - MIN_D);
-        const isLg = d >= 80;
-        const isMd = d >= 58 && d < 80;
-        const isLong = b.side === 'LONG';
-        const pnlUp  = b.pnlPct >= 0;
-
-        return (
+    <div>
+      <div className="grid gap-[3px]" style={{ gridTemplateColumns: 'repeat(10, 1fr)' }}>
+        {cells.slice(0, 100).map((cell, i) => (
           <div
-            key={b.ticker}
-            style={{ width: d, height: d }}
-            className={`rounded-full flex flex-col items-center justify-center shrink-0 border-2 transition-transform hover:scale-105 ${
-              isLong ? 'bg-gain/10 border-gain/30' : 'bg-loss/10 border-loss/30'
-            }`}
-          >
-            <span className={`font-mono font-bold text-ink leading-none ${isLg ? 'text-sm' : isMd ? 'text-xs' : 'text-[10px]'}`}>
-              {b.ticker}
+            key={i}
+            className="aspect-square rounded-[3px] transition-opacity hover:opacity-80"
+            style={{
+              backgroundColor: cell ? cell.color + '55' : '#2D374828',
+              border:          `1px solid ${cell ? cell.color + '70' : '#2D374850'}`,
+            }}
+            title={cell
+              ? `${cell.ticker} (${cell.side}) · ${cell.weight.toFixed(1)}% · P&L ${cell.pnlPct >= 0 ? '+' : ''}${cell.pnlPct.toFixed(1)}%`
+              : `Undeployed cash · ~${cashSquares}%`}
+          />
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-5 gap-y-2 mt-4 pt-3 border-t border-rim/40">
+        {entries.map(e => (
+          <div key={e.ticker} className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: e.color + '55', border: `1px solid ${e.color}70` }} />
+            <span className="text-xs font-mono font-semibold text-ink">{e.ticker}</span>
+            {e.side === 'SHORT' && <span className="text-[10px] text-loss font-mono">S</span>}
+            <span className="text-xs text-dim">{e.weight.toFixed(1)}%</span>
+            <span className={`text-xs font-mono ${e.pnlPct >= 0 ? 'text-gain' : 'text-loss'}`}>
+              {e.pnlPct >= 0 ? '+' : ''}{e.pnlPct.toFixed(1)}%
             </span>
-            {isMd || isLg ? (
-              <span className={`font-mono leading-none mt-0.5 ${isLg ? 'text-[11px]' : 'text-[9px]'} text-dim`}>
-                {b.weight.toFixed(1)}%
-              </span>
-            ) : null}
-            {isLg && (
-              <span className={`font-mono font-semibold leading-none mt-0.5 text-[11px] ${pnlUp ? 'text-gain' : 'text-loss'}`}>
-                {pnlUp ? '+' : ''}{b.pnlPct.toFixed(1)}%
-              </span>
-            )}
           </div>
-        );
-      })}
+        ))}
+        {cashSquares > 0 && (
+          <div className="flex items-center gap-1.5">
+            <span className="w-3 h-3 rounded-sm shrink-0 bg-rim/20 border border-rim/30" />
+            <span className="text-xs text-dim">Cash ~{cashSquares}%</span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -296,12 +327,18 @@ function ExpandableRow({ p }: { p: Position }) {
 export default function PortfolioPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [corrPairs, setCorrPairs] = useState<CorrPair[]>([]);
+  const [equity, setEquity]       = useState<number>(0);
   const [loading, setLoading]     = useState(true);
 
   useEffect(() => {
-    fetch('/api/positions')
-      .then(r => r.json())
-      .then(data => setPositions((data.positions ?? []) as Position[]))
+    Promise.all([
+      fetch('/api/positions').then(r => r.json()),
+      fetch('/api/account').then(r => r.json()),
+    ])
+      .then(([posData, acctData]) => {
+        setPositions((posData.positions ?? []) as Position[]);
+        if (acctData.equity) setEquity(acctData.equity);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -449,8 +486,7 @@ export default function PortfolioPage() {
             </div>
           </div>
           <div className="mt-5 pt-4 border-t border-rim/40">
-            <p className="text-xs text-dim mb-1">Circle area ∝ portfolio weight · P&L shown inside larger bubbles</p>
-            <BubbleChart bubbles={posWeights} />
+            <WaffleGrid positions={positions} totalEquity={equity || investedCap} />
           </div>
         </div>
       )}

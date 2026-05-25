@@ -10,21 +10,24 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 | Database | Neon PostgreSQL (`stocks` schema) |
 | Trade execution | Alpaca Paper Trading API |
 | Price data | Alpaca Data API (252 daily bars, 80 stocks + SPY) |
-| Fundamentals | Finnhub API (morning only, 60 req/min limit) |
+| Fundamentals | Finnhub API (8:30 AM ET daily via Fundamentals Refresh workflow, 60 req/min limit) |
 | News | RSS feeds (2 per niche, up to 15 articles/niche/session) |
 | Specialist LLMs | GPT-4o-mini |
 | Orchestrator LLM | GPT-5.1 |
 | Dashboard | Next.js 15 on Vercel (`web/`) — 6 pages wired to Neon + Alpaca |
 
-## Three Workflows
+## Four Workflows
 
 **Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
-8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → trade execution → snapshot → post-mortem trigger. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session`.
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) → [closed: stop | open: Set Session] → 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → Parse Orchestrator Output → Prepare Trade Actions → trade execution → snapshot → post-mortem trigger. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session` (bypasses the market open gate — watchdog already verifies market hours). All 16 RSS nodes have `continueRegularOutput` error handling — a single failed feed does not stop the workflow.
 
 **Watchdog** — every 30 min, 10:00 AM–3:30 PM ET (starts at 10, not 9:30 — Main Analysis already covers the open; last run at 3:30 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
-Fetches Alpaca News for all open position tickers (single API call) → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
-**Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook)
+**Fundamentals Refresh** — daily 8:30 AM ET Mon–Fri — workflow ID: `8hHaG6U0ToaHRAei`
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Finnhub fundamentals fetch for all 80 stocks → upserts `stock_fundamentals`. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, analyst consensus, and price targets.
+
+**Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
 4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
 
 ## Code Node Files
@@ -39,7 +42,7 @@ Fetches Alpaca News for all open position tickers (single API call) → single L
 | `workflows/code/07_parse_orchestrator_output.js` | Main v2 | Parse Orchestrator Output |
 | `workflows/code/08_prepare_trade_actions.js` | Main v2 | Prepare Trade Actions |
 | `workflows/code/09_process_post_trade.js` | Main v2 | Process Post-Trade |
-| `workflows/code/watchdog_check_market.js` | Watchdog | Check Market Open |
+| `workflows/code/watchdog_check_market.js` | Watchdog | _(deprecated — replaced by Finnhub Fetch Market Status + Is Market Open? IF node)_ |
 | `workflows/code/watchdog_has_open_positions.js` | Watchdog | Has Open Positions? |
 | `workflows/code/watchdog_build_news_prompt.js` | Watchdog | Build News Prompt |
 | `workflows/code/watchdog_parse_flip.js` | Watchdog | Parse Flip Response |
@@ -148,6 +151,19 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 
 Entry date tracking — post-mortem approximates entry_date as exit_date − 30 days. Store actual entry date in Neon at BUY/SHORT execution time to fix hold-period accuracy.
 Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only tested via pinned data, which bypasses `post_mortem_payloads`). Will fire automatically on the first live orchestrator-initiated SELL/COVER.
+
+## Workflow Schedule Summary (all times ET, Mon–Fri)
+
+| Time | Workflow | Action |
+|------|----------|--------|
+| 8:30 AM | Fundamentals Refresh | Fetch P/E, margins, analyst consensus for all 80 stocks |
+| 9:30 AM | Main Analysis v2 | Morning session — full specialist + orchestrator run |
+| 10:00 AM–3:30 PM | Watchdog | Every 30 min — thesis flip detection on open positions |
+| 12:00 PM | Main Analysis v2 | Midday session |
+| 3:50 PM | Main Analysis v2 | Close session (+ investor letter generation) |
+| On demand | Post-Mortem | Triggered after every SELL/COVER |
+
+All scheduled workflows gate on Finnhub `isOpen` at startup — exits cleanly on holidays without running any downstream nodes.
 
 ## Live Test Results (2026-05-22)
 

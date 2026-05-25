@@ -289,8 +289,8 @@ export default function PerformancePage() {
   }];
 
   // ── Exposure (from open positions) ───────────────────────────────────────────
-  const longUsd  = openPos.filter(p => p.side === 'long').reduce((a, p) => a + Math.abs(p.costBasis), 0);
-  const shortUsd = openPos.filter(p => p.side === 'short').reduce((a, p) => a + Math.abs(p.costBasis), 0);
+  const longUsd  = openPos.filter(p => p.side.toLowerCase() === 'long').reduce((a, p) => a + Math.abs(p.costBasis), 0);
+  const shortUsd = openPos.filter(p => p.side.toLowerCase() === 'short').reduce((a, p) => a + Math.abs(p.costBasis), 0);
   const netExp   = latestEquity > 0 ? (longUsd - shortUsd) / latestEquity * 100 : 0;
   const grossExp = latestEquity > 0 ? (longUsd + shortUsd) / latestEquity * 100 : 0;
 
@@ -316,8 +316,8 @@ export default function PerformancePage() {
 
   // ── Long / Short book attribution ────────────────────────────────────────────
   const bookStats = (side: string) => {
-    const openSide   = openPos.filter(p => p.side === side);
-    const closedSide = closedTrades.filter(t => t.direction === side);
+    const openSide   = openPos.filter(p => p.side.toLowerCase() === side);
+    const closedSide = closedTrades.filter(t => t.direction?.toLowerCase() === side);
     const pnlUsd     = openSide.reduce((a, p) => a + p.pnl, 0) + closedSide.reduce((a, t) => a + t.pnl_usd, 0);
     const winCount   = openSide.filter(p => p.pnl > 0).length + closedSide.filter(t => t.outcome === 'WIN').length;
     const lossCount  = openSide.filter(p => p.pnl < 0).length + closedSide.filter(t => t.outcome === 'LOSS').length;
@@ -345,7 +345,7 @@ export default function PerformancePage() {
     ...openPos.map((p, i): TradeRow => ({
       id:          `open-${p.ticker}-${i}`,
       ticker:      p.ticker,
-      direction:   p.side === 'long' ? 'LONG' : 'SHORT',
+      direction:   p.side.toLowerCase() === 'long' ? 'LONG' : 'SHORT',
       date:        '—',
       holdDays:    null,
       pnl:         p.pnl,
@@ -359,7 +359,7 @@ export default function PerformancePage() {
     ...closedTrades.map((t): TradeRow => ({
       id:          `closed-${t.ticker}-${t.exit_date}`,
       ticker:      t.ticker,
-      direction:   t.direction === 'long' ? 'LONG' : 'SHORT',
+      direction:   t.direction?.toLowerCase() === 'long' ? 'LONG' : 'SHORT',
       date:        t.exit_date ? new Date(t.exit_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—',
       holdDays:    t.hold_days,
       pnl:         t.pnl_usd,

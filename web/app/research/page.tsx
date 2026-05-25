@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic';
 
 import PageShell from '../components/PageShell';
 import SignalHeatmap from '../components/SignalHeatmap';
+import FeedHealth from '../components/FeedHealth';
 import { sql } from '@/lib/db';
 import { NICHE_DISPLAY } from '@/lib/constants';
 
@@ -37,6 +38,9 @@ export default async function ResearchPage() {
         <h1 className="text-xl font-semibold text-ink">Research</h1>
         <p className="text-sm text-dim mt-1">Signal trend across all sessions · click any column to view details</p>
       </div>
+
+      {/* Feed health */}
+      <FeedHealth />
 
       {/* Heatmap + session detail (client) */}
       <SignalHeatmap />

@@ -10,13 +10,28 @@ const SESSION_TIMES = [
   { mins: 15 * 60 + 50,  label: '3:50 PM ET',  slug: 'close'   },
 ];
 
-function computeNextSession(): string {
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+async function computeNextSession(): Promise<string> {
   const now = new Date();
   const et  = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const day  = et.getDay();
   const mins = et.getHours() * 60 + et.getMinutes();
 
   if (day === 0 || day === 6) return 'Mon 9:30 AM ET';
+
+  // During regular hours on a weekday, check Finnhub for holidays
+  if (mins >= 570 && mins < 960) {
+    try {
+      const res  = await fetch(`https://finnhub.io/api/v1/stock/market-status?exchange=US&token=${process.env.FINNHUB_API_KEY}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.isOpen) {
+        const nextDayLabel = day === 5 ? 'Mon' : DAY_LABELS[day + 1];
+        return `${nextDayLabel} 9:30 AM ET`;
+      }
+    } catch { /* fall through to clock logic */ }
+  }
+
   const next = SESSION_TIMES.find(s => s.mins > mins);
   if (next) return next.label;
   return day === 5 ? 'Mon 9:30 AM ET' : 'Tomorrow 9:30 AM ET';
@@ -45,7 +60,7 @@ export async function GET() {
     ]);
 
     const lastRun     = lastSessionRow ? formatLastRun(String(lastSessionRow.session)) : '—';
-    const nextSession = computeNextSession();
+    const nextSession = await computeNextSession();
 
     const spyCumPct      = snap ? parseFloat(String(snap.spy_cumulative_pct)) : NaN;
     const portfolioValue = snap ? parseFloat(String(snap.portfolio_value_usd)) : NaN;

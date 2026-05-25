@@ -18,6 +18,13 @@ function getNextSession(day: number, mins: number): string {
   return day === 5 ? 'Mon 9:30 AM ET' : 'Tomorrow 9:30 AM ET';
 }
 
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function holidayNextSession(day: number): string {
+  if (day === 5) return 'Mon 9:30 AM ET';
+  return `${DAY_LABELS[day + 1]} 9:30 AM ET`;
+}
+
 function getClockState() {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -35,7 +42,7 @@ function getClockState() {
   else if (isRegularHours) sublabel = 'Closes at 4:00 PM ET';
   else sublabel = 'Opens tomorrow 9:30 AM ET';
 
-  return { clockOpen: isRegularHours, sublabel, nextSession };
+  return { clockOpen: isRegularHours, sublabel, nextSession, day };
 }
 
 export default function MarketClock() {
@@ -63,13 +70,15 @@ export default function MarketClock() {
 
   // Use Finnhub if available, else fall back to clock
   const isOpen = finnhubOpen !== null ? finnhubOpen : clock.clockOpen;
+  // Holiday: Finnhub says closed during what should be regular hours
   const isHoliday = finnhubOpen === false && clock.clockOpen;
 
-  const label    = isOpen ? 'Market Open' : 'Market Closed';
-  const sublabel = isOpen ? 'Closes at 4:00 PM ET'
-                 : isHoliday ? 'Market holiday'
-                 : clock.sublabel;
-  const color    = isOpen ? 'text-gain' : 'text-dim';
+  const label       = isOpen ? 'Market Open' : 'Market Closed';
+  const sublabel    = isOpen ? 'Closes at 4:00 PM ET'
+                    : isHoliday ? 'Market holiday'
+                    : clock.sublabel;
+  const nextSession = isHoliday ? holidayNextSession(clock.day) : clock.nextSession;
+  const color       = isOpen ? 'text-gain' : 'text-dim';
 
   return (
     <div className="bg-panel border border-rim rounded-xl p-4 flex items-center gap-3">
@@ -83,7 +92,7 @@ export default function MarketClock() {
         {sublabel}
       </div>
       <div className="w-px h-4 bg-rim" />
-      <span className="text-xs text-dim">Next session: <span className="text-ink">{clock.nextSession}</span></span>
+      <span className="text-xs text-dim">Next session: <span className="text-ink">{nextSession}</span></span>
     </div>
   );
 }

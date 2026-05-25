@@ -76,7 +76,7 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 - **Sizing — Shorts:** $6,000 (confidence ≥ 0.85) / $3,000 (0.75–0.84)
 - **Max short exposure:** $12,000 (20% of portfolio)
 - **Max open positions:** 12 (longs + shorts combined)
-- **Max per sector:** 2 positions (1 long + 1 short)
+- **Max per sector:** up to 2 longs (2nd requires TREND pattern + ≤$5k size) + 1 short
 - **Trailing stops:** ATR × 2.5, set natively via Alpaca GTC orders
 - **Penalties (stack multiplicatively):** correlation >0.70 with open position, earnings ≤2 days, NOISE signal history, FIRST_SIGNAL — each reduces sizing one tier
 - **Thesis stop:** mandatory immediate exit when specialist flips direction
@@ -103,8 +103,8 @@ Reference/spec versions are in `/prompts/`. The prompts that execute are embedde
 
 | File | Embedded in |
 |------|-------------|
-| `specialist_prompt.md` | `04_build_specialist_inputs.js` (constant `SPECIALIST_SYSTEM_PROMPT`) |
+| `specialist_prompt.md` | `build_specialist_message.js` (constant `SPECIALIST_SYSTEM_PROMPT`) |
 | `orchestrator_prompt.md` | `06_build_orchestrator_input.js` (constant `ORCHESTRATOR_SYSTEM_PROMPT`) |
 | `post_mortem_prompt.md` | `post_mortem_build_input.js` (constant `POST_MORTEM_SYSTEM_PROMPT`) |
 
-The prompt files are the detailed spec; the code versions are slightly condensed. When editing a prompt, update the embedded constant in the relevant Code node file.
+The prompt files and the embedded constants are kept in full sync. When editing a prompt, update both the `/prompts/` reference file and the embedded constant in the Code node.

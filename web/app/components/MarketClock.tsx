@@ -11,57 +11,79 @@ const SESSION_TIMES = [
 
 function getNextSession(day: number, mins: number): string {
   if (day === 0 || day === 6) {
-    // Weekend — next trading day is Monday
-    const daysUntilMon = day === 6 ? 2 : 1;
-    const prefix = daysUntilMon === 1 ? 'Mon' : 'Mon';
-    return `${prefix} 9:30 AM ET`;
+    return day === 6 ? 'Mon 9:30 AM ET' : 'Mon 9:30 AM ET';
   }
-  // Weekday: find the next session time that hasn't passed yet
   const next = SESSION_TIMES.find(s => s.mins > mins);
   if (next) return next.label;
-  // All sessions done today — next is tomorrow (or Monday if Friday)
-  const isWeekday = day >= 1 && day <= 5;
-  const nextDayLabel = (isWeekday && day === 5) ? 'Mon' : 'Tomorrow';
-  return `${nextDayLabel} 9:30 AM ET`;
+  return day === 5 ? 'Mon 9:30 AM ET' : 'Tomorrow 9:30 AM ET';
 }
 
-function getMarketStatus() {
+function getClockState() {
   const now = new Date();
   const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
   const day = et.getDay();
-  const h = et.getHours();
-  const m = et.getMinutes();
-  const mins = h * 60 + m;
-
+  const mins = et.getHours() * 60 + et.getMinutes();
   const nextSession = getNextSession(day, mins);
 
-  if (day === 0 || day === 6) return { open: false, label: 'Market Closed', sublabel: 'Weekend', color: 'text-dim', nextSession };
-  if (mins >= 570 && mins < 960) return { open: true, label: 'Market Open', sublabel: 'Closes at 4:00 PM ET', color: 'text-gain', nextSession };
-  if (mins < 570) return { open: false, label: 'Pre-Market', sublabel: `Opens in ${Math.floor((570 - mins) / 60)}h ${(570 - mins) % 60}m`, color: 'text-yellow-400', nextSession };
-  return { open: false, label: 'After Hours', sublabel: 'Opens tomorrow 9:30 AM ET', color: 'text-dim', nextSession };
+  const isWeekend = day === 0 || day === 6;
+  const isRegularHours = !isWeekend && mins >= 570 && mins < 960;
+  const isPreMarket = !isWeekend && mins < 570;
+
+  let sublabel: string;
+  if (isWeekend) sublabel = 'Weekend';
+  else if (isPreMarket) sublabel = `Opens in ${Math.floor((570 - mins) / 60)}h ${(570 - mins) % 60}m`;
+  else if (isRegularHours) sublabel = 'Closes at 4:00 PM ET';
+  else sublabel = 'Opens tomorrow 9:30 AM ET';
+
+  return { clockOpen: isRegularHours, sublabel, nextSession };
 }
 
 export default function MarketClock() {
-  const [status, setStatus] = useState(getMarketStatus());
+  const [clock, setClock] = useState(getClockState());
+  // null = loading, true/false = Finnhub result
+  const [finnhubOpen, setFinnhubOpen] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const id = setInterval(() => setStatus(getMarketStatus()), 60000);
+    const tick = () => setClock(getClockState());
+    const id = setInterval(tick, 60000);
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const fetchStatus = () =>
+      fetch('/api/market-status')
+        .then(r => r.json())
+        .then(d => { if (d.isOpen !== null) setFinnhubOpen(d.isOpen); })
+        .catch(() => {});
+    fetchStatus();
+    // Re-check every 5 minutes
+    const id = setInterval(fetchStatus, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Use Finnhub if available, else fall back to clock
+  const isOpen = finnhubOpen !== null ? finnhubOpen : clock.clockOpen;
+  const isHoliday = finnhubOpen === false && clock.clockOpen;
+
+  const label    = isOpen ? 'Market Open' : 'Market Closed';
+  const sublabel = isOpen ? 'Closes at 4:00 PM ET'
+                 : isHoliday ? 'Market holiday'
+                 : clock.sublabel;
+  const color    = isOpen ? 'text-gain' : 'text-dim';
+
   return (
     <div className="bg-panel border border-rim rounded-xl p-4 flex items-center gap-3">
-      <div className={`flex items-center gap-1.5 ${status.color}`}>
-        <span className={`w-2 h-2 rounded-full ${status.open ? 'bg-gain animate-pulse' : 'bg-dim'}`} />
-        <span className="text-sm font-medium">{status.label}</span>
+      <div className={`flex items-center gap-1.5 ${color}`}>
+        <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-gain animate-pulse' : 'bg-dim'}`} />
+        <span className="text-sm font-medium">{label}</span>
       </div>
       <div className="w-px h-4 bg-rim" />
       <div className="flex items-center gap-1.5 text-xs text-dim">
         <Clock size={12} />
-        {status.sublabel}
+        {sublabel}
       </div>
       <div className="w-px h-4 bg-rim" />
-      <span className="text-xs text-dim">Next session: <span className="text-ink">{status.nextSession}</span></span>
+      <span className="text-xs text-dim">Next session: <span className="text-ink">{clock.nextSession}</span></span>
     </div>
   );
 }

@@ -258,15 +258,19 @@ do not trade regardless of signal quality.
 
 ### Hard portfolio limits (enforced by code — your output is filtered against these)
 - Maximum 12 open positions simultaneously (longs + shorts combined)
-- Maximum 1 LONG and 1 SHORT per sector — never 2 longs or 2 shorts in the same
-  sector. If you already hold a long in Cybersecurity, you may only add a short.
-  If you already hold a short in Defense, you may only add a long. Opening a
-  second long in a sector you already hold a long in is a hard violation.
+- Per sector limits:
+  - Maximum 1 SHORT per sector. Never open a second short in a sector you already hold a short in.
+  - First LONG in a sector: always permitted (subject to conviction threshold).
+  - Second LONG in a sector: permitted ONLY when (a) the sector signal history is
+    TREND (4+/5 sessions same direction), AND (b) the two long picks have correlation
+    < 0.70, AND (c) the second long is sized at $5,000 maximum — never $8,000.
+    A second long is a concentration bet on a confirmed trend, not a diversification move.
+  - Third LONG in a sector: never permitted under any circumstances.
 - Maximum total short exposure: $12,000. Do not propose a SHORT that would push
   total short book above this limit.
 - If cash < minimum required for any valid trade → add to watchlist, do not force.
 - These limits are enforced in code after your output. Violations will be filtered
-  out silently. Respect them proactively so your decisions are executed as intended.
+  out. Respect them proactively so your decisions are executed as intended.
 
 ## EXIT RULES
 
@@ -332,9 +336,13 @@ For each HIGH conviction specialist signal (effective_confidence ≥ 0.75):
    below 0.75, do not trade regardless of the raw signal.
 3. Check pattern EV (Section 7b). Negative EV → skip. EV < 1.0% → noise penalty.
 4. Is this sector already at its limit?
-   - Already hold 1 LONG here → only a SHORT is permitted, not another LONG.
-   - Already hold 1 SHORT here → only a LONG is permitted, not another SHORT.
-   - Already hold 1 LONG + 1 SHORT here → sector is full, skip entirely.
+   - 0 longs in sector → first long permitted normally.
+   - 1 long in sector → second long permitted ONLY if: signal_history_pattern is TREND
+     (4+/5) AND correlation with existing long < 0.70 AND sized at $5,000 (never $8,000).
+     If any condition fails, skip — do not force a second long.
+   - 2 longs in sector → no more longs. Only a short is permitted.
+   - 1 short in sector → no more shorts. Only a long is permitted.
+   - 2 longs + 1 short → sector is full, skip entirely.
 5. Do you have sufficient cash for the minimum valid size ($5k long / $3k short)?
    If not, is there a lower-conviction or thesis-invalidated position to close first?
 6. Does the candidate have correlation >0.70 with an existing position? → Apply penalty.
@@ -386,7 +394,8 @@ and flag any upcoming earnings events for the next session.
 ## WHAT YOU DO NOT DO
 - Do not trade on MEDIUM or LOW conviction signals — ever, no exceptions
 - Do not open new positions in a sector with no specialist signal this session
-- Do not open a second LONG in a sector where you already hold a LONG
+- Do not open a second LONG in a sector unless it is TREND pattern, correlation < 0.70, and sized at $5,000
+- Do not open a third LONG in any sector under any circumstances
 - Do not open a second SHORT in a sector where you already hold a SHORT
 - Do not average down into a losing position — if thesis is intact, hold;
   if thesis is broken, close. There is no middle ground.

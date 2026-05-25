@@ -25,9 +25,9 @@ const openOrders = $("Compute Derived Metrics").first().json.openOrders || [];
 // These limits are enforced in code regardless of what the orchestrator outputs.
 // SELL/COVER always pass through — they reduce exposure, never add it.
 
-const MAX_POSITIONS    = 12;
-const MAX_SHORT_USD    = 12000;
-const MAX_PER_SECTOR   = { long: 1, short: 1 }; // 1 long + 1 short max per niche
+const MAX_POSITIONS  = 12;
+const MAX_SHORT_USD  = 12000;
+// Per sector: max 2 longs (1st free; 2nd requires TREND + ≤$5k) + 1 short
 
 // Build current state from open positions (pre-trade snapshot)
 const currentPositions = $("Compute Derived Metrics").first().json.positions || [];
@@ -102,11 +102,32 @@ const filteredActions = actions.filter(action => {
     return false;
   }
 
-  // 2. Max per sector: 1 long + 1 short
+  // 2. Per-sector limits: max 2 longs (with conditions) + 1 short
   const nicheCounts = nicheExposure[niche] || { long: 0, short: 0 };
-  if (nicheCounts[side] >= MAX_PER_SECTOR[side]) {
-    console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: ${niche} already has ${nicheCounts[side]} ${side}(s) (max ${MAX_PER_SECTOR[side]})`);
-    return false;
+
+  if (side === 'short') {
+    if (nicheCounts.short >= 1) {
+      console.log(`[LIMIT] Skipping SHORT ${action.ticker}: ${niche} already has 1 short (max 1 per sector)`);
+      return false;
+    }
+  } else {
+    // Long side
+    if (nicheCounts.long >= 2) {
+      console.log(`[LIMIT] Skipping BUY ${action.ticker}: ${niche} already has 2 longs (max 2 per sector)`);
+      return false;
+    }
+    if (nicheCounts.long === 1) {
+      // Second long — requires TREND pattern and $5k sizing
+      const pattern = (action.signal_history_pattern || '').toUpperCase();
+      if (pattern !== 'TREND') {
+        console.log(`[LIMIT] Skipping second BUY ${action.ticker}: ${niche} already has 1 long — second long requires TREND pattern (got ${pattern || 'none'})`);
+        return false;
+      }
+      if ((action.size_usd || 0) > 5000) {
+        console.log(`[LIMIT] Skipping second BUY ${action.ticker}: second long in ${niche} must be sized at $5,000 or less (got $${action.size_usd})`);
+        return false;
+      }
+    }
   }
 
   // 3. Max short exposure cap

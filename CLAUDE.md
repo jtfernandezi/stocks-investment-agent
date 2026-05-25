@@ -106,7 +106,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 - Sizing shorts: $6k (conf ≥ 0.85) / $3k (0.75–0.84)
 - Max short exposure: $12k (20% of portfolio)
 - Max open positions: 12 total
-- Max per sector: 2 (1 long + 1 short)
+- Max per sector: up to 2 longs (1st always allowed; 2nd only with TREND pattern + ≤$5k size) + 1 short
 - Trailing stops: ATR×2.5, clamped 5–15%, set via Alpaca GTC orders
 - Penalties (stack multiplicatively — 3+ = no trade): correlation >0.70, earnings ≤2 days, NOISE history, FIRST_SIGNAL
 
@@ -122,7 +122,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 - **Watchdog flip response**: when `watchdog_compare_signals.js` detects a flip, it outputs flip context and triggers the orchestrator via Execute Workflow. The orchestrator (not the watchdog) decides whether to close or hold the position. Emergency manual close is still possible via `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders.
 - **SELL/COVER execution**: uses `DELETE /v2/positions/{ticker}` (not a market sell order). This atomically closes the position AND cancels all associated GTC orders in one call. A GTC trailing stop locks shares, so a plain market SELL will be rejected with "insufficient qty available" if a stop is already attached. The `Is Closing Position?` IF node routes SELL/COVER to `Close Position` (HTTP DELETE) and BUY/SHORT to `Execute Market Order` (HTTP POST). Both merge back at `Merge Trade Actions` before `Restore Trade Context`.
 - **Restore Trade Context**: Code node between Merge Trade Actions and Needs Trailing Stop?. Re-attaches `ticker`, `action`, `shares`, `stop_pct_used`, `needs_trailing_stop` from Prepare Trade Actions into `$json` after the Alpaca response overwrites it. Uses symbol-based matching (not array index) so branch-merge ordering doesn't matter.
-- **Cash guard in Prepare Trade Actions**: BUY/SHORT orders are filtered if cumulative `size_usd` exceeds `account.cash`. SELL/COVER always pass through. Prevents the orchestrator from over-deploying when cash is tight.
+- **Hard limits in Prepare Trade Actions**: All four limits are enforced in code in `08_prepare_trade_actions.js`, regardless of what the orchestrator outputs. (1) Max 12 open positions. (2) Per-sector: 1st long always allowed; 2nd long only with TREND pattern + ≤$5k; 3rd long blocked; max 1 short per sector. (3) Max $12k total short exposure. (4) Cash guard — cumulative BUY/SHORT `size_usd` cannot exceed available cash. SELL/COVER always pass all four checks. A `TICKER_NICHE` lookup table (all 80 tickers) embedded in 08 drives per-sector tracking from current Alpaca positions.
 - **Trailing stop shares**: `Math.floor()` applied to share qty — Alpaca rejects fractional GTC trailing stop orders with 422.
 - **Close Position URL**: uses `$('Prepare Trade Actions').first().json.ticker` — NOT `$json.ticker`. After `Cancel Stop Before Close` fires its HTTP DELETE, Alpaca's response overwrites `$json`, so `$json.ticker` becomes undefined. Reading directly from `Prepare Trade Actions` bypasses this.
 

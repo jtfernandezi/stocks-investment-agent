@@ -59,6 +59,25 @@ _(v1 files 03_prepare_rss_sources.js, 04_build_specialist_inputs.js, 05_parse_sp
 
 Prompts in `/prompts/` are the spec/reference versions. The prompts that actually execute are embedded as constants inside the Code node files above. When editing a prompt, update both.
 
+## MANDATORY: n8n Sync After Any Code Node Change
+
+**The local `workflows/code/` files are source control. n8n is production. Editing a file is incomplete until the change is live in n8n.**
+
+After editing any file in `workflows/code/`, you MUST push the change to n8n via the API before the task is done:
+
+1. Download the full workflow JSON (`GET /api/v1/workflows/{id}`)
+2. Replace the relevant node's `parameters.jsCode` with the updated file content
+3. PUT the workflow back using only `{name, nodes, connections, settings.executionOrder, staticData}` — omit all other top-level fields or n8n will reject with "must NOT have additional properties"
+4. Confirm the response contains `updatedAt`
+
+n8n API: `https://n8n-railway-production-7153.up.railway.app/api/v1`  
+Header: `X-N8N-API-KEY: <key from memory reference_n8n.md>`
+
+Workflow IDs:
+- Main Analysis v2: `l2d06hEvDlfLibms` (contains all 8 specialist Build nodes + Build Orchestrator Input)
+- Post-Mortem: `BtVZfEGwbsDpOczg` (contains Build Post-Mortem Input)
+- Watchdog: `7n1bPJ91OkMx3KM4`
+
 ## Critical: n8n Node Naming (Main Analysis v2)
 
 Code nodes reference each other by exact name via `$("Node Name")`. A typo silently breaks the workflow. Key names:

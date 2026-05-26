@@ -17,7 +17,7 @@ export async function GET() {
       ORDER BY DATE(created_at AT TIME ZONE 'America/New_York') ASC, created_at DESC
     `;
 
-    if (rows.length === 0) return NextResponse.json([]);
+    if (rows.length === 0) return NextResponse.json({ data: [] });
 
     const points = [
       { date: 'Start', portfolio: START_CAPITAL, spy: START_CAPITAL },
@@ -30,7 +30,7 @@ export async function GET() {
       }),
     ];
 
-    return NextResponse.json(points);
+    return NextResponse.json({ data: points });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

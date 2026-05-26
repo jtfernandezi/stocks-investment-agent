@@ -3,8 +3,23 @@
 // Assembles the full orchestrator prompt from all available context
 // Output: 1 item with system_prompt + user_prompt for OpenAI GPT-5.1
 
-const ctx         = $("Compute Derived Metrics").first().json;
-const specialists = $("Parse & Save All Signals").all().map(i => i.json);
+const ctx              = $("Compute Derived Metrics").first().json;
+const specialistsRaw   = $("Parse & Save All Signals").all().map(i => i.json);
+
+// Apply cold-start confidence cap before orchestrator sees the signals.
+// Specialists with < 10 sessions on record have no reliable calibration history.
+// Cap prevents uncalibrated confidence from triggering max-size trades.
+const specialists = specialistsRaw.map(s => {
+  const accData      = (ctx.specialistEffectiveConf || {})[s.niche] || {};
+  const totalSignals = accData.total_signals || 0;
+  let coldStartCap   = null;
+  if      (totalSignals < 5)  coldStartCap = 0.72;
+  else if (totalSignals < 10) coldStartCap = 0.78;
+  if (coldStartCap !== null && (s.effective_confidence || 0) > coldStartCap) {
+    return { ...s, effective_confidence: coldStartCap, cold_start: true, cold_start_signals: totalSignals, cold_start_cap: coldStartCap };
+  }
+  return { ...s, cold_start: false, cold_start_signals: totalSignals };
+});
 
 // ── HELPER: Format positions ──────────────────────────────────────────────────
 function formatPositions(positions, stopProximity, earningsAtRisk, priceMap) {
@@ -30,8 +45,14 @@ function formatPositions(positions, stopProximity, earningsAtRisk, priceMap) {
       ? `| ⚠️ EARNINGS IN ${earn.days_until}d (${earn.risk_level})`
       : '';
 
-    return `  ${ticker} (${side}) — Entry: $${entryPrice} | Current: $${currentPrice} | Qty: ${Math.abs(qty)} | MktVal: $${Math.abs(mktValue).toFixed(0)} | P&L: ${unrealPct.toFixed(2)}% ($${unrealPnl.toFixed(0)}) ${stopStr} ${earnStr}`;
-  }).join('\n');
+    const niche  = pos.entry_niche  || 'unknown';
+    const thesis = pos.entry_thesis || 'thesis not recorded';
+
+    return [
+      `  ${ticker} (${side}, ${niche}) — Entry: $${entryPrice} | Current: $${currentPrice} | Days: ${daysHeld} | MktVal: $${Math.abs(mktValue).toFixed(0)} | P&L: ${unrealPct.toFixed(2)}% ($${unrealPnl.toFixed(0)}) ${stopStr} ${earnStr}`,
+      `    Entry thesis: ${thesis}`,
+    ].join('\n');
+  }).join('\n\n');
 }
 
 // ── HELPER: Format signal history ─────────────────────────────────────────────
@@ -47,9 +68,10 @@ function formatSpecialistSignals(specialists) {
   return specialists.map(s => {
     const longPicks  = (s.long_picks  || []).map(p => `    LONG  ${p.ticker}: ${p.thesis} | Risk: ${p.key_risk} | Earnings: ${p.earnings_risk}`).join('\n');
     const shortPicks = (s.short_picks || []).map(p => `    SHORT ${p.ticker}: ${p.thesis} | Risk: ${p.key_risk} | Earnings: ${p.earnings_risk}`).join('\n');
-    const convFlag   = s.effective_confidence < 0.75 ? ' ← BELOW TRADING THRESHOLD' : '';
+    const coldFlag   = s.cold_start ? ` ← COLD-START (${s.cold_start_signals} sessions, capped at ${s.cold_start_cap})` : '';
+    const convFlag   = !s.cold_start && s.effective_confidence < 0.75 ? ' ← BELOW TRADING THRESHOLD' : '';
     return [
-      `### ${s.niche.toUpperCase()} | ${s.direction} | ${s.effective_conviction} | effective_conf: ${s.effective_confidence} (raw: ${s.confidence}, scaling: ${s.scaling_factor}x)${convFlag}`,
+      `### ${s.niche.toUpperCase()} | ${s.direction} | ${s.effective_conviction} | effective_conf: ${s.effective_confidence} (raw: ${s.confidence}, scaling: ${s.scaling_factor}x)${coldFlag}${convFlag}`,
       `  Macro: ${s.macro_assessment}`,
       longPicks  ? `  Long picks:\n${longPicks}`   : '  No long picks.',
       shortPicks ? `  Short picks:\n${shortPicks}` : '  No short picks.',
@@ -74,9 +96,19 @@ function formatPatternPerf(patternPerfMap) {
 // ── HELPER: Format trade lessons ─────────────────────────────────────────────
 function formatTradeLessons(lessons) {
   if (!lessons || lessons.length === 0) return '  No lessons yet.';
-  return lessons.map(l =>
-    `  [${l.generated_at ? l.generated_at.substring(0, 10) : '?'}] ${l.ticker} (${l.niche}): "${l.key_lesson}" | Pattern: ${l.entry_pattern} | ${l.outcome} | Entry: ${l.entry_timing} | Exit: ${l.exit_timing}`
-  ).join('\n');
+  return lessons.map(l => {
+    const date   = l.generated_at ? l.generated_at.substring(0, 10) : '?';
+    const dir    = (l.direction || '').toUpperCase();
+    const pnlPct = l.pnl_pct != null ? `${l.pnl_pct > 0 ? '+' : ''}${parseFloat(l.pnl_pct).toFixed(2)}%` : '?%';
+    const pnlUsd = l.pnl_usd != null ? `$${Math.abs(parseFloat(l.pnl_usd)).toFixed(0)}` : '';
+    const days   = l.hold_days != null ? `${l.hold_days}d` : '?d';
+    const exitR  = l.exit_reason || 'unknown';
+    return [
+      `  [${date}] ${dir} ${l.ticker} (${l.niche}) — ${l.outcome} | ${pnlPct} (${pnlUsd}) | held ${days} | exit: ${exitR}`,
+      `    Pattern: ${l.entry_pattern || '?'} | Entry timing: ${l.entry_timing || '?'} | Exit timing: ${l.exit_timing || '?'}`,
+      `    Lesson: "${l.key_lesson || 'none'}"`,
+    ].join('\n');
+  }).join('\n\n');
 }
 
 // ── HELPER: Format watchlist ──────────────────────────────────────────────────
@@ -218,6 +250,11 @@ Where scaling_factor = hit_rate_30d / avg_reported_confidence_30d
 - scaling_factor < 0.90: specialist is overconfident — signals underperforming stated confidence. Discount accordingly.
 - scaling_factor < 0.70: specialist is significantly miscalibrated. Even a HIGH conviction signal should be treated as MEDIUM. Do not size at the $8k tier.
 
+**Cold-start cap:** A specialist flagged COLD-START has fewer than 10 sessions on record and no reliable calibration history. Its effective_confidence has been pre-capped before you see it:
+- 0–4 sessions: capped at 0.72 — below the trading threshold. Do not trade on this signal.
+- 5–9 sessions: capped at 0.78 — minimum size only ($5k long / $3k short).
+These caps are already applied in the number you see. Do not override them based on signal quality — the specialist has not yet earned the track record to justify higher confidence.
+
 **Always use effective_confidence (not raw reported_confidence) when applying sizing rules.**
 
 #### 7b. Pattern Performance — Expected Value by Entry Pattern (pattern_performance table)
@@ -243,9 +280,6 @@ How to apply:
 1. Pattern reinforcement: same setup that WORKED → prioritize it today.
 2. Pattern avoidance: documented mistake → check whether today's trade repeats it. If yes, apply penalty or skip.
 3. Do NOT override a valid HIGH conviction TREND entry solely because a recent lesson was cautionary.
-
-#### 7d. Counterfactual Performance
-For recently closed positions, you receive what alternative picks (specialist offered but not chosen) returned during the same hold period. If alternatives consistently outperform by >5%, revise stock selection heuristic.
 
 ## POSITION SIZING RULES
 
@@ -294,6 +328,11 @@ If a position has been held for more than 30 days AND is showing negative P&L AN
 - Default action: SELL/COVER. Do not hold a losing position on assumption it will recover.
 - Exception: if within 5% of trailing stop, allow the stop to execute rather than manually exiting at the worst price of the move.
 
+For SHORT positions, apply this rule with the correct inversion:
+- "Negative P&L" on a SHORT means the stock has moved upward against your position (you are losing because the stock is rising, not falling).
+- "No TREND signal" on a SHORT means no sustained TREND BEARISH pattern — the sector has not confirmed 4+/5 BEARISH sessions to support the thesis.
+- A SHORT with positive P&L (stock declining as expected, thesis playing out) is NOT subject to this aging rule regardless of days held — do not close a winning short just because it is old.
+
 ### Profit-taking (discretionary)
 If a position has gained >20%: consider trimming half and holding the rest with a tighter trailing stop. Do not let a 25% gain reverse to 5%.
 
@@ -308,6 +347,25 @@ For every open position:
 5. Stop proximity 🔴 (<3%) with weakening thesis? → Consider closing proactively.
 6. Position gained >20%? → Consider trimming.
 7. Held >30 days with negative P&L and no TREND confirmation? → Apply position aging rule.
+
+**Assessing thesis_intact for SHORT positions — the direction inverts:**
+For a LONG position, a BULLISH specialist signal confirms the thesis. For a SHORT position,
+a BEARISH specialist signal confirms the thesis. Apply this inversion explicitly when setting
+thesis_intact in your portfolio_review output:
+
+- SHORT + specialist BEARISH → thesis confirmed → thesis_intact: true (hold)
+- SHORT + specialist BULLISH → thesis threatened → thesis_intact: false (→ triggers item 2, COVER)
+- SHORT + specialist NEUTRAL → thesis uncertain. Do not assume this is safe.
+  Ask: was the sector previously clearly BEARISH (the reason you entered the short), and has
+  it now settled to NEUTRAL without the original catalyst resolving? If yes, the short thesis
+  is likely exhausted — the bear case has faded without fully playing out. Flag thesis_intact: false
+  and apply position aging (item 7) and stop proximity (item 5) to determine whether to COVER.
+  If the sector was always mixed and NEUTRAL is consistent with the entry context, thesis_intact: true.
+
+The failure mode to avoid: seeing a BEARISH specialist signal on a stock you are SHORT and
+concluding "things are getting worse, the picture materially changed" → thesis_intact: false.
+That is wrong. Deteriorating conditions for the stock confirm the short thesis. Improving
+conditions (BULLISH signal) are what threaten it.
 
 Output HOLD or SELL/COVER with explicit reasoning for each position.
 
@@ -432,7 +490,15 @@ ${formatSpecialistSignals(specialists)}
 
 ${formatPositions(ctx.positions, ctx.stopProximity, ctx.earningsAtRisk, ctx.priceMap)}
 
-Long exposure: $${account.long_market_value.toFixed(0)} | Short exposure: $${Math.abs(account.short_market_value).toFixed(0)} | Net: $${(account.long_market_value + account.short_market_value).toFixed(0)}
+${(() => {
+  const pv      = account.portfolio_value;
+  const longExp = account.long_market_value;
+  const shortExp= Math.abs(account.short_market_value);
+  const netExp  = account.long_market_value + account.short_market_value;
+  const cashAmt = account.cash;
+  const pct     = v => pv > 0 ? (v / pv * 100).toFixed(1) : '0.0';
+  return `Long: $${longExp.toFixed(0)} (${pct(longExp)}%) | Short: $${shortExp.toFixed(0)} (${pct(shortExp)}%) | Net: $${netExp.toFixed(0)} (${pct(netExp)}%) | Cash: $${cashAmt.toFixed(0)} (${pct(cashAmt)}%)`;
+})()}
 
 ---
 

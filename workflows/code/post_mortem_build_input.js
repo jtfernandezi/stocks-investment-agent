@@ -7,8 +7,20 @@
 const webhook  = $("Workflow Trigger").first().json;
 const sigRows  = $("Load Signals During Hold").all().map(i => i.json);
 
+// Actual entry date and price from Neon position_metadata (stored at BUY/SHORT time)
+let posEntry = {};
+try { posEntry = $("Load Position Entry").first().json || {}; } catch (_) {}
+
+// ETF return for hold period from Compute ETF Return node
+let sectorEtfReturn = null;
+try {
+  const etfCtx = $("Compute ETF Return").first().json || {};
+  sectorEtfReturn = (etfCtx.etf_return != null) ? etfCtx.etf_return : null;
+} catch (_) {}
+
 // ── COMPUTE P&L ───────────────────────────────────────────────────────────────
-const entryPrice  = parseFloat(webhook.entry_price  || 0);
+// Prefer entry_price from position_metadata (recorded at execution time) over webhook value
+const entryPrice  = parseFloat(posEntry.entry_price || webhook.entry_price  || 0);
 const exitPrice   = parseFloat(webhook.exit_price   || 0);
 // webhook.side is 'LONG'/'SHORT'; webhook.direction is 'long'/'short' — accept either
 const direction   = (webhook.side === 'LONG' || webhook.direction === 'long') ? 'long' : 'short';
@@ -21,15 +33,17 @@ if (isLong) {
   pnlPct = entryPrice > 0 ? ((entryPrice - exitPrice) / entryPrice) * 100 : 0;
 }
 
-// Estimate hold days
-let holdDays = 0;
-if (webhook.entry_date && webhook.exit_date) {
-  holdDays = Math.round(
-    (new Date(webhook.exit_date) - new Date(webhook.entry_date)) / 86400000
-  );
-}
+// Actual entry date from position_metadata; fallback to 30-day approximation until backfilled
+const exitDate    = webhook.exit_date || new Date().toISOString().split('T')[0];
+const actualEntryDate = posEntry.entry_date
+  ? posEntry.entry_date.toString().substring(0, 10)
+  : new Date(new Date(exitDate).getTime() - 30 * 86400000).toISOString().split('T')[0];
 
-// Position size approximation (use size_usd from webhook if available)
+// Hold days from actual dates
+const holdDays = Math.round(
+  (new Date(exitDate) - new Date(actualEntryDate)) / 86400000
+);
+
 const sizeUsd  = webhook.size_usd || 5000;
 const pnlUsd   = sizeUsd * (pnlPct / 100);
 const outcome  = pnlPct > 0.5 ? 'WIN' : pnlPct < -0.5 ? 'LOSS' : 'BREAKEVEN';
@@ -52,7 +66,7 @@ const SECTOR_ETF = {
   data_centers:      'DTCR',
 };
 const etfTicker     = SECTOR_ETF[webhook.niche] || 'SPY';
-const sectorEtfReturn = null;  // not yet fetched — add Fetch Sector ETF Return node to enable
+// sectorEtfReturn populated from Compute ETF Return node (see top of file)
 
 // ── ALTERNATIVE PICKS PERFORMANCE ────────────────────────────────────────────
 // alt_tickers + alt_returns come from the webhook payload
@@ -224,8 +238,8 @@ const userPrompt = `## CLOSED TRADE RECORD
 - Exit Price: $${exitPrice}
 - P&L: ${pnlPct.toFixed(2)}% ($${pnlUsd.toFixed(0)})
 - Hold Period: ${holdDays} days
-- Entry Date: ${webhook.entry_date || 'unknown'}
-- Exit Date: ${webhook.exit_date || 'today'}
+- Entry Date: ${actualEntryDate}
+- Exit Date: ${exitDate}
 
 **Entry Context:**
 - Entry Pattern: ${webhook.signal_history_pattern || 'unknown'}
@@ -261,8 +275,8 @@ return [{
     pnl_pct:           parseFloat(pnlPct.toFixed(2)),
     pnl_usd:           parseFloat(pnlUsd.toFixed(2)),
     hold_days:         holdDays,
-    entry_date:        webhook.entry_date,
-    exit_date:         webhook.exit_date,
+    entry_date:        actualEntryDate,
+    exit_date:         exitDate,
     entry_pattern:     webhook.signal_history_pattern,
     exit_reason:       webhook.exit_reason,
     alternative_picks: JSON.stringify(alternativePicksFormatted),

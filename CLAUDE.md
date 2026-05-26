@@ -159,7 +159,7 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 | Fetch Bars Cloud | MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM | 252 |
 | Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 252 |
 | Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 252 |
-| Fetch Bars SPY | SPY | 252 |
+| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR | 252 |
 | **Fetch Price Bars** (Code) | Merges all 9 → `{bars: {...}}` | — |
 
 ## Key Implementation Details — Execute Market Order
@@ -168,8 +168,15 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 
 ## Known Open Issues
 
-Entry date tracking — post-mortem approximates entry_date as exit_date − 30 days. Store actual entry date in Neon at BUY/SHORT execution time to fix hold-period accuracy.
 Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only tested via pinned data, which bypasses `post_mortem_payloads`). Will fire automatically on the first live orchestrator-initiated SELL/COVER.
+
+## position_metadata notes
+
+- Written by "Prepare Position Metadata" → "Store Position Entry" in Main Analysis v2, triggered after every BUY/SHORT execution (parallel branch from Process Post-Trade)
+- Read by "Load Position Metadata" in Main Analysis v2 — provides `days_held`, `entry_niche`, `entry_thesis` on all open positions in `02_compute_derived_metrics.js`
+- Read by "Load Position Entry" in Post-Mortem workflow — provides actual `entry_date` and `entry_price` for attribution
+- ETF return: computed by "Prepare ETF Fetch" → "Fetch ETF Bars" → "Compute ETF Return" in Post-Mortem using the actual hold period dates; fed to `post_mortem_build_input.js` via `$("Compute ETF Return").first().json.etf_return`
+- Cold-start: positions opened before 2026-05-25 have no metadata row. Post-mortem falls back to exit_date − 30 days for entry_date on those trades.
 
 ## Workflow Schedule Summary (all times ET, Mon–Fri)
 
@@ -183,6 +190,26 @@ Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only t
 | On demand | Post-Mortem | Triggered after every SELL/COVER |
 
 All scheduled workflows gate on Finnhub `isOpen` at startup — exits cleanly on holidays without running any downstream nodes.
+
+## Specialist Data Enhancements (2026-05-25)
+
+Four new data points added to every specialist's per-stock input block:
+
+1. **Relative strength vs sector ETF** — `vs ETF: 1D: +1.2% | 5D: +3.4% | 30D: -0.8%`. `Fetch Bars SPY` now fetches all 8 sector ETFs alongside SPY. `02_compute_derived_metrics.js` builds `etfPriceMap` keyed by niche; `build_specialist_message.js` computes stock return minus ETF return per period.
+
+2. **Volume / ADV ratio** — `Volume: 42.1M (ADV20: 28.5M) | Ratio: 1.48x`. Computed from bar `v` field already in the 252-bar fetch. ADV20 uses prior 20 sessions (excluding most recent bar). Ratio > 1.5x = institutional conviction; < 0.5x = move lacks conviction.
+
+3. **Analyst upside %, PT spread, buy consensus %** — `Consensus: 12B / 3H / 1S (75% buy) | PT: $145.00 (+20.8% upside) | Spread: $110–$180 (48% — wide)`. All computed in `formatStockData` from existing Finnhub fundamentals. System prompt includes explicit long/short inversion guidance: heavy buy consensus on a short = squeeze risk, not support.
+
+4. **Cold-start confidence cap** — Specialists with < 10 sessions on record have no reliable calibration. `06_build_orchestrator_input.js` caps effective_confidence before the orchestrator sees it: 0–4 sessions → cap 0.72 (below trading threshold), 5–9 sessions → cap 0.78 (min size only). `build_specialist_message.js` tells the specialist it's in cold-start mode so it self-calibrates.
+
+## Watchdog Enhancements (2026-05-25)
+
+- **Investment thesis passed to watchdog** — `watchdog_has_open_positions.js` now includes `niche` per position. A new `Load Position Metadata (Watchdog)` Postgres node reads thesis + niche from `position_metadata` into `watchdog_build_news_prompt.js` via `metaMap`.
+- **Short inversion logic** — Full worked examples and failure modes added to the watchdog system prompt: BEARISH news on a SHORT confirms the thesis; BULLISH news threatens it.
+- **`news_assessment` field** — Watchdog LLM now outputs `news_assessment: CONFIRMS | THREATENS | NEUTRAL` alongside `direction: BULLISH | BEARISH | NEUTRAL`. These must be internally consistent.
+- **Contradiction detection** — `watchdog_parse_flip.js` detects `thesis_intact: false + news_assessment: CONFIRMS` (logical impossibility), suppresses it from flip triggering, stores it in `stocks.watchdog_events`, and sends a Gmail alert.
+- **Stop proximity** — `Fetch Alpaca Open Orders (Watchdog)` node feeds trailing stop distances into the watchdog prompt. CRITICAL (<3% away) lowers the flip confidence threshold from 0.60 to 0.50.
 
 ## Live Test Results (2026-05-22)
 
@@ -221,6 +248,7 @@ All four workflows activated and running autonomously.
 | `specialist_accuracy` | 30-day hit rate, scaling_factor, calibration_error per specialist |
 | `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
 | `investor_letters` | LLM-written investor letters per close session — `session` UNIQUE, `body` full prose text |
+| `position_metadata` | Entry date, price, niche, thesis per open position — ticker PRIMARY KEY, UPSERTed at BUY/SHORT execution time |
 
 ## Credentials (n8n)
 

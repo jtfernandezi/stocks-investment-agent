@@ -16,7 +16,7 @@ const TICKERS       = {tickers_json};         // SET PER INSTANCE
 
 const ctx = $("Compute Derived Metrics").first().json;
 
-function formatStockData(tickers, priceMap, fundamentalsMap, earningsRows) {
+function formatStockData(tickers, priceMap, fundamentalsMap, earningsRows, etfData) {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   return tickers.map(ticker => {
     const p    = priceMap[ticker]        || {};
@@ -30,20 +30,44 @@ function formatStockData(tickers, priceMap, fundamentalsMap, earningsRows) {
     }
     const pctFrom52H = p.week_52_high ? ((p.current - p.week_52_high) / p.week_52_high * 100).toFixed(1) : 'N/A';
     const pctFrom52L = p.week_52_low  ? ((p.current - p.week_52_low)  / p.week_52_low  * 100).toFixed(1) : 'N/A';
-    const analystStr = (f.analyst_buy || f.analyst_hold || f.analyst_sell)
-      ? `${f.analyst_buy||0}B / ${f.analyst_hold||0}H / ${f.analyst_sell||0}S` : 'N/A';
-    const ptStr = f.price_target_avg
-      ? `$${f.price_target_avg} (H: $${f.price_target_high||'N/A'} / L: $${f.price_target_low||'N/A'})` : 'N/A';
+    const totalAnalysts = (f.analyst_buy||0) + (f.analyst_hold||0) + (f.analyst_sell||0);
+    const buyPct = totalAnalysts > 0 ? Math.round((f.analyst_buy||0) / totalAnalysts * 100) : null;
+    const analystStr = totalAnalysts > 0
+      ? `${f.analyst_buy||0}B / ${f.analyst_hold||0}H / ${f.analyst_sell||0}S (${buyPct}% buy)`
+      : 'N/A';
+    let ptStr = 'N/A';
+    if (f.price_target_avg && p.current) {
+      const upside = ((f.price_target_avg - p.current) / p.current * 100);
+      const upsideStr = upside >= 0 ? `+${upside.toFixed(1)}% upside` : `${upside.toFixed(1)}% — above PT`;
+      let spreadStr = '';
+      if (f.price_target_high && f.price_target_low && f.price_target_avg > 0) {
+        const spread = (f.price_target_high - f.price_target_low) / f.price_target_avg * 100;
+        const spreadLabel = spread > 40 ? ' — wide' : spread > 20 ? ' — moderate' : '';
+        spreadStr = ` | Spread: $${f.price_target_low}–$${f.price_target_high} (${spread.toFixed(0)}%${spreadLabel})`;
+      }
+      ptStr = `$${f.price_target_avg} (${upsideStr})${spreadStr}`;
+    }
     const revGrowth   = f.revenue_growth_yoy != null ? (f.revenue_growth_yoy * 100).toFixed(1) + '%' : 'N/A';
     const grossMargin = f.gross_margin       != null ? (f.gross_margin       * 100).toFixed(1) + '%' : 'N/A';
     const netMargin   = f.net_margin         != null ? (f.net_margin         * 100).toFixed(1) + '%' : 'N/A';
+    let rsStr = 'N/A';
+    if (etfData && p.chg_1d_pct != null && etfData.chg_1d_pct != null) {
+      const s = v => (v >= 0 ? `+${v.toFixed(1)}` : v.toFixed(1));
+      rsStr = `1D: ${s(p.chg_1d_pct - etfData.chg_1d_pct)}% | 5D: ${s(p.chg_5d_pct - etfData.chg_5d_pct)}% | 30D: ${s(p.chg_30d_pct - etfData.chg_30d_pct)}%`;
+    }
+    const fv = v => v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e3 ? Math.round(v / 1e3) + 'K' : (v || 0).toString();
+    const volStr = p.adv_ratio != null
+      ? `${fv(p.vol_today)} (ADV20: ${fv(p.adv_20)}) | Ratio: ${p.adv_ratio}x`
+      : 'N/A';
     return [
       `${ticker}:`,
       `  Price: $${p.current||'N/A'} | 1D: ${p.chg_1d_pct||0}% | 5D: ${p.chg_5d_pct||0}% | 30D: ${p.chg_30d_pct||0}%`,
+      `  vs ETF: ${rsStr}`,
+      `  Volume: ${volStr}`,
       `  52W Range: $${p.week_52_low||'N/A'} – $${p.week_52_high||'N/A'} (${pctFrom52H}% from high / +${pctFrom52L}% from low)`,
       `  P/E: ${f.pe_ratio||'N/A'} | P/S: ${f.ps_ratio||'N/A'} | P/B: ${f.pb_ratio||'N/A'}`,
       `  Rev Growth YoY: ${revGrowth} | Gross Margin: ${grossMargin} | Net Margin: ${netMargin}`,
-      `  Beta: ${f.beta||'N/A'} | Analyst Consensus: ${analystStr} | Price Target: ${ptStr}`,
+      `  Beta: ${f.beta||'N/A'} | Consensus: ${analystStr} | PT: ${ptStr}`,
       `  Earnings Risk: ${earningsTag}`,
     ].join('\n');
   }).join('\n\n');
@@ -59,12 +83,23 @@ function formatNews(allItems) {
 }
 
 function formatAccuracyHistory(niche, specialistEffectiveConf) {
-  const acc = specialistEffectiveConf[niche];
-  if (!acc || !acc.total_signals) return 'No accuracy history yet. Treat your confidence calibration as unconstrained for now.';
+  const acc          = specialistEffectiveConf[niche];
+  const totalSignals = acc ? (acc.total_signals || 0) : 0;
+
+  if (totalSignals === 0) {
+    return 'COLD-START: No signal history on record. The Portfolio Manager will cap your effective confidence at 0.72 — below the 0.75 trading threshold. You cannot trigger a trade this session regardless of your analysis. State your honest assessment anyway. You need at least 10 sessions on record to unlock trading authority.';
+  }
+  if (totalSignals < 5) {
+    return `COLD-START (${totalSignals}/10 sessions recorded): Insufficient history to calibrate. Your effective confidence will be capped at 0.72 — below the trading threshold. State your honest analysis but do not inflate confidence above 0.72. Trading authority unlocks at 10 sessions.`;
+  }
+  if (totalSignals < 10) {
+    return `WARMING UP (${totalSignals}/10 sessions recorded): Your effective confidence will be capped at 0.78. You may trigger trades at minimum size ($5k long / $3k short) but not maximum size. Continue calibrating honestly — full trading authority unlocks at 10 sessions.`;
+  }
+
   const calLabel = acc.scaling_factor < 0.85
-    ? '⚠️ YOU ARE OVERCONFIDENT — discount your stated confidence'
-    : acc.scaling_factor > 1.15 ? '✅ You have been underconfident — you may state slightly higher confidence'
-    : '✅ Well-calibrated';
+    ? 'YOU ARE OVERCONFIDENT — discount your stated confidence'
+    : acc.scaling_factor > 1.15 ? 'You have been underconfident — you may state slightly higher confidence'
+    : 'Well-calibrated';
   return [
     `30-Day Performance: ${(acc.hit_rate * 100).toFixed(1)}% directional accuracy across ${acc.total_signals} signals`,
     `Confidence Calibration: You stated avg ${(acc.avg_reported_confidence * 100).toFixed(1)}% confidence → scaling factor ${acc.scaling_factor}x (${calLabel})`,
@@ -100,6 +135,9 @@ You receive five types of information:
    - Divergences: a stock that should be rising given the news but isn't is a
      warning sign. A stock rising strongly without obvious news may have informed
      buying.
+   - Volume conviction: ADV ratio > 1.5x means the price move is backed by
+     institutional participation — it confirms the thesis. ADV ratio < 0.5x means
+     the move lacks conviction and is prone to reversal — do not chase it.
 
 3. FUNDAMENTAL DATA — P/E, P/B, P/S, revenue growth YoY, gross margin, net margin,
    beta, analyst consensus (Buy/Hold/Sell counts), price target average, and
@@ -112,9 +150,35 @@ You receive five types of information:
      indicate pricing power and competitive moat.
    - Flag earnings risk: if a stock has earnings in ≤7 days, factor in the
      binary event risk explicitly.
-   - Use analyst price targets as a reference frame, not a signal — the market
-     has already seen them. A large positive gap between current price and
-     consensus target suggests institutional support.
+   - Analyst consensus and price targets — interpret based on position direction:
+
+     For LONG candidates:
+     - Large positive upside (>20%) + tight PT spread (<20%) + heavy buy consensus
+       → strong institutional support, anchors the long thesis
+     - Negative upside + strong news catalyst visible in today's feed → PT is stale,
+       the stock ran on information analysts have not repriced yet. Do not treat as
+       overvalued — weight the news catalyst over the PT gap
+     - Negative upside + no obvious catalyst → stock has priced in the bull case,
+       limited margin of safety, raise the conviction bar for a new long entry
+     - PT spread > 40% + no news catalyst → analyst disagreement is too wide,
+       do not use PT as a standalone signal
+
+     For SHORT candidates (logic inverts):
+     - Heavy buy consensus + positive upside → analysts disagree with the bear thesis
+       and there is room for the stock to run against you. Squeeze risk is elevated.
+       This raises the required conviction bar for the short
+     - Heavy sell consensus + stock above PT (negative upside) + no new catalyst
+       → analysts agree the stock is overvalued, supports the short thesis
+     - Stock above PT + strong news catalyst → PT is stale, reassess whether the
+       bear thesis still holds given the new information before recommending the short
+     - PT spread > 40% + strong news catalyst → weight the news over the PT
+       regardless of direction
+
+     In all cases:
+     - PT shows N/A → no analyst coverage for this stock. Rely on fundamentals
+       and price action only — do not penalize or reward the stock for missing PT data
+     - Buy consensus below 30% with negative upside → broad analyst bearishness,
+       meaningful headwind for any long and additional support for a short
 
 4. EARNINGS CALENDAR — Next earnings date for each stock in your universe.
    This is critical for risk management:
@@ -270,7 +334,7 @@ the JSON object.
   "summary": "3-4 sentence synthesis written for the Portfolio Manager, highlighting the most important insight from this session"
 }`;
 
-const stockData = formatStockData(TICKERS, ctx.priceMap, ctx.fundamentalsMap, ctx.earningsRows);
+const stockData = formatStockData(TICKERS, ctx.priceMap, ctx.fundamentalsMap, ctx.earningsRows, (ctx.etfPriceMap || {})[NICHE]);
 const news      = formatNews($input.all());
 const accuracy  = formatAccuracyHistory(NICHE, ctx.specialistEffectiveConf);
 

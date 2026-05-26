@@ -29,6 +29,14 @@ try {
   // fallback: empty (specialists will note missing data)
 }
 
+// Position metadata: entry date + niche + thesis stored at BUY/SHORT execution time
+let posMetadataRows = [];
+try {
+  posMetadataRows = $("Load Position Metadata").all().map(i => i.json);
+} catch (_) {
+  // node not yet wired — safe fallback, days_held will show as null
+}
+
 // ── PRICE MAP ─────────────────────────────────────────────────────────────────
 // Alpaca bars response: { bars: { TICKER: [{t, o, h, l, c, v}, ...] } }
 const allBars = (priceResp && priceResp.bars) ? priceResp.bars : {};
@@ -58,6 +66,18 @@ for (const [ticker, bars] of Object.entries(allBars)) {
     ? Math.min(Math.max((atr14 * 2.5 / current) * 100, 5), 15)
     : 8;  // default 8% if ATR unavailable
 
+  // ADV-20: prior 20 sessions (excluding most recent bar) vs most recent session
+  const vol_today = sorted[sorted.length - 1].v || 0;
+  let adv_20 = 0;
+  if (sorted.length >= 21) {
+    const prior20 = sorted.slice(-21, -1).map(b => b.v || 0);
+    adv_20 = prior20.reduce((a, b) => a + b, 0) / 20;
+  } else if (sorted.length >= 2) {
+    const prior = sorted.slice(0, -1).map(b => b.v || 0);
+    adv_20 = prior.reduce((a, b) => a + b, 0) / prior.length;
+  }
+  const adv_ratio = adv_20 > 0 ? parseFloat((vol_today / adv_20).toFixed(2)) : null;
+
   priceMap[ticker] = {
     current:        parseFloat(current.toFixed(2)),
     chg_1d_pct:     parseFloat(((current - prev1d)  / prev1d  * 100).toFixed(2)),
@@ -67,8 +87,44 @@ for (const [ticker, bars] of Object.entries(allBars)) {
     trail_pct:      parseFloat(trailPct.toFixed(2)),
     week_52_high:   parseFloat(Math.max(...sorted.map(b => b.h)).toFixed(2)),
     week_52_low:    parseFloat(Math.min(...sorted.map(b => b.l)).toFixed(2)),
+    vol_today:      Math.round(vol_today),
+    adv_20:         Math.round(adv_20),
+    adv_ratio,
   };
 }
+
+// ── ETF PRICE MAP (relative strength vs sector ETF) ──────────────────────────
+const NICHE_ETF = {
+  cybersecurity:     'HACK',
+  defense:           'ITA',
+  nuclear_uranium:   'URA',
+  copper_minerals:   'COPX',
+  ai_semiconductors: 'SOXX',
+  cloud_hyperscalers:'SKYY',
+  oil_gas:           'XLE',
+  data_centers:      'DTCR',
+};
+const etfPriceMap = {};
+for (const [niche, etfTicker] of Object.entries(NICHE_ETF)) {
+  if (priceMap[etfTicker]) etfPriceMap[niche] = priceMap[etfTicker];
+}
+
+// ── POSITION METADATA MAP ─────────────────────────────────────────────────────
+// Keyed by ticker — provides entry_date (for days_held), niche, thesis
+const posMetadataMap = {};
+for (const row of posMetadataRows) {
+  if (row && row.ticker) posMetadataMap[row.ticker] = row;
+}
+
+// Enrich Alpaca positions with days_held computed from actual entry_date
+const todayMs = Date.now();
+const enrichedPositions = positions.map(pos => {
+  const meta = posMetadataMap[pos.symbol];
+  const days_held = (meta && meta.entry_date)
+    ? Math.floor((todayMs - new Date(meta.entry_date).getTime()) / 86400000)
+    : null;
+  return { ...pos, days_held, entry_niche: meta?.niche || null, entry_thesis: meta?.thesis || null };
+});
 
 // ── FUNDAMENTALS MAP ─────────────────────────────────────────────────────────
 const fundamentalsMap = {};
@@ -279,11 +335,12 @@ return [{
       equity:             parseFloat(accountRaw.equity),
       unrealized_pl:      parseFloat(accountRaw.unrealized_pl || 0),
     },
-    positions,
+    positions: enrichedPositions,
     openOrders,
 
     // Price & fundamentals
     priceMap,
+    etfPriceMap,
     fundamentalsMap,
 
     // Risk flags

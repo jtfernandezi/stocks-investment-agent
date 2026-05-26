@@ -58,5 +58,5 @@ return [{ json: {
   positions_by_niche: byNiche,
   position_count:     positions.length,
   tickers_csv:        tickers.join(','),  // used in Fetch Alpaca News URL: ?symbols=...
-  raw_positions:      openPositions,      // full Alpaca objects for LLM context
+  raw_positions:      openPositions.map(p => ({ ...p, niche: TICKER_NICHE[p.symbol] || null })),
 } }];

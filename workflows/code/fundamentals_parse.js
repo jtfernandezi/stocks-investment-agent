@@ -44,7 +44,7 @@ const sql = `INSERT INTO stocks.stock_fundamentals (
 ) VALUES (
   '${ticker}',
   ${s(metric.peTTM)}, ${s(metric.pbAnnual)}, ${s(metric.psTTM)},
-  ${s(metric.revenueGrowthTTMYoy)}, ${s(metric.grossMarginTTM)}, ${s(metric.netMarginTTM)},
+  ${s(metric.revenueGrowthTTMYoy)}, ${s(metric.grossMarginTTM)}, ${s(metric.netProfitMarginTTM)},
   ${s(metric.beta)}, ${s(metric['52WeekHigh'])}, ${s(metric['52WeekLow'])},
   ${s(metric.epsGrowthQuarterlyYoy)},
   ${si(totalBuy)}, ${si(totalHold)}, ${si(totalSell)},

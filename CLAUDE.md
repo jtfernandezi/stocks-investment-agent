@@ -25,7 +25,7 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) �
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Fundamentals Refresh** — daily 8:30 AM ET Mon–Fri — workflow ID: `8hHaG6U0ToaHRAei`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Finnhub fundamentals fetch for all 80 stocks → upserts `stock_fundamentals`. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, analyst consensus, and price targets.
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, and analyst consensus. Price targets pending FMP API key (price_target_avg/high/low remain null until then).
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
 4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -54,6 +54,7 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [clos
 | `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
 | `workflows/code/letter_build_prompt.js` | Main v2 | Build Letter Prompt (close sessions only) |
 | `workflows/code/letter_store.js` | Main v2 | Parse & Store Letter |
+| `workflows/code/fundamentals_parse.js` | Fundamentals Refresh | Parse Fundamentals |
 
 _(v1 files 03_prepare_rss_sources.js, 04_build_specialist_inputs.js, 05_parse_specialist_outputs.js — kept for reference, used by v1 backup workflow only)_
 

@@ -480,6 +480,18 @@ Cumulative Return — Portfolio: ${ctx.portfolioCumulativePct}% | SPY: ${ctx.spy
 
 ---
 
+## 0. PREVIOUS SESSION CONTEXT
+${(() => {
+  const summaries = ctx.prevOrchestratorSummaries || [];
+  if (summaries.length === 0) return '  No prior sessions on record this experiment.';
+  return summaries.map(s => {
+    const ts = (s.created_at || '').substring(0, 16).replace('T', ' ');
+    return `[${ts} ET — ${s.session_type}]\n${s.summary || '(no summary recorded)'}`;
+  }).join('\n\n');
+})()}
+
+---
+
 ## 1. SPECIALIST SIGNALS (today)
 
 ${formatSpecialistSignals(specialists)}

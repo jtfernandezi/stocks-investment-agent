@@ -37,6 +37,14 @@ try {
   // node not yet wired — safe fallback, days_held will show as null
 }
 
+// Previous orchestrator summaries — last 2 by recency for session-to-session continuity
+let prevOrchestratorSummaries = [];
+try {
+  prevOrchestratorSummaries = $("Load Orchestrator Sessions").all().map(i => i.json);
+} catch (_) {
+  // table empty or node not yet wired — orchestrator starts fresh this session
+}
+
 // ── PRICE MAP ─────────────────────────────────────────────────────────────────
 // Alpaca bars response: { bars: { TICKER: [{t, o, h, l, c, v}, ...] } }
 const allBars = (priceResp && priceResp.bars) ? priceResp.bars : {};
@@ -365,5 +373,8 @@ return [{
     recentTradeLessons: lessonRows.slice(0, 5),
     watchlist: watchlistRows,
     earningsRows,
+
+    // Session continuity — last 2 orchestrator summaries (scheduled + watchdog)
+    prevOrchestratorSummaries,
   }
 }];

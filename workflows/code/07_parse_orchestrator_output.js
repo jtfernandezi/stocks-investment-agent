@@ -146,6 +146,15 @@ const postMortemPayloads = closedPositions.map(action => {
 // Close (3:50 PM ET) is after regular hours — no new orders.
 const isMarketOpen = orchInput.session_type === 'morning' || orchInput.session_type === 'midday';
 
+// ── DERIVE ORCHESTRATOR SESSION TYPE FOR STORAGE ─────────────────────────────
+// session_id carries '_watchdog' suffix for watchdog-triggered runs.
+// Use 'watchdog_flip' label in orchestrator_sessions table so they're
+// distinguishable from same-slot scheduled runs when loading context.
+const rawSessionId       = (orchInput.portfolio_state.session_id || '');
+const orchestratorSessionType = rawSessionId.endsWith('_watchdog')
+  ? 'watchdog_flip'
+  : (orchInput.session_type || 'unknown');
+
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 return [{
   json: {
@@ -164,8 +173,9 @@ return [{
     open_positions:     state.positions || [],  // Alpaca positions list (used by 09 for long/short split)
 
     // For Neon snapshot
-    session_id:   orchInput.portfolio_state.session_id,
-    session_type: orchInput.session_type,
+    session_id:              orchInput.portfolio_state.session_id,
+    session_type:            orchInput.session_type,
+    orchestrator_session_type: orchestratorSessionType,
     account:      orchInput.portfolio_state.account,
     spyCurrent:   orchInput.portfolio_state.spyCurrent,
     spyCumulativePct: orchInput.portfolio_state.spyCumulativePct,

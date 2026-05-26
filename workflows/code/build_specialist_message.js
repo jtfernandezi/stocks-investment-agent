@@ -87,13 +87,13 @@ function formatAccuracyHistory(niche, specialistEffectiveConf) {
   const totalSignals = acc ? (acc.total_signals || 0) : 0;
 
   if (totalSignals === 0) {
-    return 'COLD-START: No signal history on record. The Portfolio Manager will cap your effective confidence at 0.72 — below the 0.75 trading threshold. You cannot trigger a trade this session regardless of your analysis. State your honest assessment anyway. You need at least 10 sessions on record to unlock trading authority.';
+    return 'COLD-START: No signal history on record yet. Report your honest confidence based purely on your sector analysis — fundamentals, technicals, and news. The system applies automatic calibration to your output. Do not anchor your confidence to any fixed value; report what the data actually supports.';
   }
   if (totalSignals < 5) {
-    return `COLD-START (${totalSignals}/10 sessions recorded): Insufficient history to calibrate. Your effective confidence will be capped at 0.72 — below the trading threshold. State your honest analysis but do not inflate confidence above 0.72. Trading authority unlocks at 10 sessions.`;
+    return `COLD-START (${totalSignals}/10 sessions recorded): Limited history for calibration. Report your honest confidence based on your analysis. The system scales your output automatically using your accumulating track record. Focus on accurate analysis, not on hitting any particular number.`;
   }
   if (totalSignals < 10) {
-    return `WARMING UP (${totalSignals}/10 sessions recorded): Your effective confidence will be capped at 0.78. You may trigger trades at minimum size ($5k long / $3k short) but not maximum size. Continue calibrating honestly — full trading authority unlocks at 10 sessions.`;
+    return `WARMING UP (${totalSignals}/10 sessions recorded): Calibration is building. Report your honest confidence — the system applies your track record as a scaling factor. Full calibration unlocks at 10 sessions. Continue prioritising accuracy over confidence level.`;
   }
 
   const calLabel = acc.scaling_factor < 0.85

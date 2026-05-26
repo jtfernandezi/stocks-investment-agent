@@ -19,13 +19,13 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 ## Four Workflows
 
 **Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) → [closed: stop | open: Set Session] → 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → Parse Orchestrator Output → Prepare Trade Actions → trade execution → snapshot → post-mortem trigger. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session` (bypasses the market open gate — watchdog already verifies market hours). All 16 RSS nodes have `continueRegularOutput` error handling — a single failed feed does not stop the workflow.
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) → [closed: stop | open: Set Session] → 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → Parse Orchestrator Output → three parallel branches: (1) Process Post-Trade (snapshot + post-mortem), (2) Build Orchestrator Session SQL → Store Orchestrator Summary, (3) Has Trade Actions? → [no trades: No Trades — End | trades: Prepare Trade Actions → trade execution]. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session` (bypasses the market open gate — watchdog already verifies market hours). All 16 RSS nodes have `continueRegularOutput` error handling — a single failed feed does not stop the workflow.
 
 **Watchdog** — every 30 min, 10:00 AM–3:30 PM ET (starts at 10, not 9:30 — Main Analysis already covers the open; last run at 3:30 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Fundamentals Refresh** — daily 8:30 AM ET Mon–Fri — workflow ID: `8hHaG6U0ToaHRAei`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, and analyst consensus. Price targets pending FMP API key (price_target_avg/high/low remain null until then).
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, and analyst consensus. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 80 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
 4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -85,7 +85,7 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 
 - `Set Session` — referenced by `02_compute_derived_metrics.js`
 - `Fetch Alpaca Account`, `Fetch Alpaca Positions`, `Fetch Alpaca Open Orders`, `Fetch Price Bars` — referenced by `02`
-- `Load Signal History`, `Load Specialist Accuracy`, `Load Pattern Performance`, `Load Trade Lessons`, `Load Watchlist`, `Load Earnings Calendar`, `Load Correlation Matrix`, `Load Portfolio Snapshots`, `Load Fundamentals Cache` — referenced by `02`
+- `Load Signal History`, `Load Specialist Accuracy`, `Load Pattern Performance`, `Load Trade Lessons`, `Load Watchlist`, `Load Earnings Calendar`, `Load Correlation Matrix`, `Load Portfolio Snapshots`, `Load Fundamentals Cache`, `Load Orchestrator Sessions` — referenced by `02`
 - `Compute Derived Metrics` — referenced by `build_specialist_message.js` (8 instances) and `06`
 - `Build Orchestrator Input` — referenced by `07`
 - `Parse Orchestrator Output` — referenced by `09`
@@ -167,6 +167,13 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 
 The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyParameters`** (n8n key-value pairs mode), NOT `specifyBody: "string"` or `specifyBody: "json"`. This is the only approach that sends a correctly structured JSON body to Alpaca. After `Restore Trade Context` re-attaches trade fields, `Submit Trailing Stop` reads directly from `$json.ticker`, `$json.shares`, `$json.action`, `$json.stop_pct_used`.
 
+## Enhancements (2026-05-26)
+
+- **Orchestrator session continuity** — new `stocks.orchestrator_sessions` table stores each session's `orchestrator_summary`. Three new n8n nodes: `Load Orchestrator Sessions` (Postgres, loads last 2 rows), `Build Orchestrator Session SQL` (Code, safe apostrophe escaping via `sqlEsc`), `Store Orchestrator Summary` (Postgres). Last 2 summaries injected into every orchestrator call under `## 0. PREVIOUS SESSION CONTEXT`. Watchdog-triggered runs stored as `session_type = 'watchdog_flip'` (derived from `_watchdog` suffix on session_id in `07`).
+- **Cold-start anchoring fix** — removed specific cap thresholds from specialist cold-start messages in `build_specialist_message.js`. Specialists now receive neutral calibration guidance; the system applies caps silently in `06`.
+- **No Trades — End node** — `Has Trade Actions?` IF node inserted between `Parse Orchestrator Output` and `Prepare Trade Actions`. When orchestrator produces zero actions, execution visibly terminates at `No Trades — End` noOp instead of silently stopping. `Process Post-Trade` and `Build Orchestrator Session SQL` are unaffected (parallel branches from `Parse Orchestrator Output`).
+- **Equity curve dashboard fix** — `/api/snapshots` was returning a bare array; client read `.data` from it (always undefined). Fixed to return `{ data: [...] }`. 36 snapshots (May 20–26) now populate the Performance page equity curve.
+
 ## Known Open Issues
 
 Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only tested via pinned data, which bypasses `post_mortem_payloads`). Will fire automatically on the first live orchestrator-initiated SELL/COVER.
@@ -202,7 +209,7 @@ Four new data points added to every specialist's per-stock input block:
 
 3. **Analyst upside %, PT spread, buy consensus %** — `Consensus: 12B / 3H / 1S (75% buy) | PT: $145.00 (+20.8% upside) | Spread: $110–$180 (48% — wide)`. All computed in `formatStockData` from existing Finnhub fundamentals. System prompt includes explicit long/short inversion guidance: heavy buy consensus on a short = squeeze risk, not support.
 
-4. **Cold-start confidence cap** — Specialists with < 10 sessions on record have no reliable calibration. `06_build_orchestrator_input.js` caps effective_confidence before the orchestrator sees it: 0–4 sessions → cap 0.72 (below trading threshold), 5–9 sessions → cap 0.78 (min size only). `build_specialist_message.js` tells the specialist it's in cold-start mode so it self-calibrates.
+4. **Cold-start confidence cap** — Specialists with < 10 sessions on record have no reliable calibration. `06_build_orchestrator_input.js` caps effective_confidence before the orchestrator sees it: 0–4 sessions → cap 0.72 (below trading threshold), 5–9 sessions → cap 0.78 (min size only). `build_specialist_message.js` tells the specialist it's in cold-start mode and to report honest analysis — the specific cap values are intentionally NOT revealed to the specialist to prevent anchoring (discovered 2026-05-26: revealing 0.72 caused all 8 specialists to output exactly 0.72).
 
 ## Watchdog Enhancements (2026-05-25)
 
@@ -250,6 +257,7 @@ All four workflows activated and running autonomously.
 | `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
 | `investor_letters` | LLM-written investor letters per close session — `session` UNIQUE, `body` full prose text |
 | `position_metadata` | Entry date, price, niche, thesis per open position — ticker PRIMARY KEY, UPSERTed at BUY/SHORT execution time |
+| `orchestrator_sessions` | One row per orchestrator run — `session_id`, `session_type` (`morning`/`midday`/`close`/`watchdog_flip`), `summary` text. No UNIQUE constraint (watchdog re-runs same session_id). Last 2 rows by `created_at` injected into next orchestrator call as `## 0. PREVIOUS SESSION CONTEXT`. |
 
 ## Credentials (n8n)
 

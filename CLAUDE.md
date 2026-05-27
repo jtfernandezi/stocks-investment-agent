@@ -28,7 +28,7 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [clos
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, and analyst consensus. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 80 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
-4-component attribution → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
+3-component attribution (A: Sector Accuracy, B: Entry Timing, C: Exit Timing) → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
 
 ## Code Node Files
 
@@ -49,6 +49,7 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [clos
 | `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
 | `workflows/code/letter_build_prompt.js` | Main v2 | Build Letter Prompt (close sessions only) |
 | `workflows/code/letter_store.js` | Main v2 | Parse & Store Letter |
+| `workflows/code/compute_correlation_matrix.js` | Main v2 | Compute Correlation Matrix |
 | `workflows/code/fundamentals_parse.js` | Fundamentals Refresh | Parse Fundamentals |
 
 Prompts in `/prompts/` are the spec/reference versions. The prompts that actually execute are embedded as constants inside the Code node files above. When editing a prompt, update both.
@@ -89,6 +90,8 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 - `Load Signals During Hold` — referenced by `post_mortem_build_input.js`
 - `Build Post-Mortem Input` — referenced by `post_mortem_store.js`
 - `Has Open Positions?` — referenced by `watchdog_build_news_prompt.js`
+- `Fetch Price Bars` — referenced by `compute_correlation_matrix.js` (reads `.bars`)
+- `Set Session` — also referenced by `compute_correlation_matrix.js` (morning-only gate)
 
 ## Critical: OpenAI Node Versions
 
@@ -181,6 +184,7 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **`pnl_usd` locked to computed value** — `post_mortem_store.js` previously let the LLM override the system-computed P&L (`parsed.pnl_usd ?? inputCtx.pnl_usd`). Flipped to `inputCtx.pnl_usd ?? parsed.pnl_usd` so the value derived from actual entry/exit prices always wins.
 - **`position_metadata` backfilled** — All 5 pre-2026-05-25 positions (CEG, CRWD, MSFT, NVDA, SCCO) manually backfilled with accurate entry date (2026-05-20), Alpaca `avg_entry_price`, niche, original thesis, and signal_history_pattern sourced from `portfolio_snapshots`.
 - **Post-mortem confirmed live** — First real orchestrator-initiated SELL/COVER post-mortem ran successfully for ZS on 2026-05-27 (execution 353). Full chain verified: Workflow Trigger → Load Signals → ETF Bars → Build Input → LLM → Parse → Insert Trade Lesson → Update Specialist Accuracy → Update Pattern Performance ✓
+- **Correlation matrix populated automatically** — `correlation_matrix` table was always empty (no workflow wrote to it). Added `Compute Correlation Matrix` Code node (90-day Pearson, threshold |corr| ≥ 0.50, morning sessions only) + `Store Correlation Matrix` Postgres node as a parallel branch from `Fetch Price Bars` in Main Analysis v2. Will populate on the next 9:30 AM run.
 
 ## Known Open Issues
 

@@ -47,7 +47,7 @@ Use fundamentals to:
 
 ### 4. EARNINGS AT-RISK
 Stocks in your open positions with earnings in ≤7 days. For each:
-- Earnings ≤2 days: you MUST decide — hold through earnings (binary event risk) or close before market open. Default: CLOSE unless the thesis is exceptionally strong AND analyst consensus strongly expects a beat AND the position is already profitable. Document your decision explicitly.
+- Earnings ≤2 days: lean toward closing before the event. Holding is reasonable if the thesis is exceptionally strong, analyst consensus strongly expects a beat, and the position is already profitable. Document your decision either way.
 - Earnings 3–7 days: flag in portfolio review. Monitor closely. Do not add to this position.
 
 ### 5. CORRELATION FLAGS
@@ -76,9 +76,9 @@ The specialist has no sustained edge this sector. Even if today's signal is HIGH
 
 **REVERSAL (3+ consecutive sessions opposite to prior trend):**
 High conviction signal that the previous trend has ended.
-- If you are long a sector that just generated 3 consecutive BEARISH sessions: SELL immediately — the thesis has flipped.
-- If you are short a sector that just generated 3 consecutive BULLISH sessions: COVER immediately.
-- If you have no position: this is a high-conviction entry in the new direction.
+- If you are long a sector that just generated 3 consecutive BEARISH sessions: strong case to exit — the thesis has likely flipped.
+- If you are short a sector that just generated 3 consecutive BULLISH sessions: strong case to cover.
+- If you have no position: this is a high-conviction entry signal in the new direction.
 
 **FIRST SIGNAL (no history available):**
 Treat as BIAS conviction regardless of today's signal strength. Do not size as TREND until at least 3 confirming sessions exist.
@@ -194,14 +194,14 @@ When a specialist's direction changes from your entry signal, assess whether the
 - Long position: specialist flips BULLISH → NEUTRAL → use judgment. Check sessions_in_direction: if this is the first NEUTRAL session (sessions_in_direction: 1), weigh it against whether news has genuinely changed, stop proximity, and what other specialists say before deciding. A sustained NEUTRAL (sessions_in_direction: 2+) with no recovery warrants a SELL.
 - Short position: apply the inverse logic (BEARISH confirms; BULLISH or sustained NEUTRAL threatens).
 
-### Earnings exit (default behavior)
-If an open position has earnings ≤2 days: DEFAULT is to close before the event. Hold ONLY if (a) thesis remains intact, (b) analyst consensus strongly expects a beat, (c) position is profitable, AND (d) specialist has HIGH conviction this session. Document exception explicitly.
+### Earnings exit
+If an open position has earnings ≤2 days: lean toward closing before the event. Holding is reasonable if (a) thesis remains intact, (b) analyst consensus strongly expects a beat, (c) position is profitable, AND (d) specialist has HIGH conviction this session. Document your decision either way.
 
-### Position aging — stale and underwater (mandatory review)
+### Position aging — stale and underwater
 If a position has been held for more than 30 days AND is showing negative P&L AND the specialist has not produced a TREND signal (4+/5 sessions) in the last 3 sessions:
-- Flag it in portfolio_review with thesis_intact: false unless you can cite a specific, concrete catalyst still pending.
-- Default action: SELL/COVER. Do not hold a losing position on assumption it will recover.
-- Exception: if within 5% of trailing stop, allow the stop to execute rather than manually exiting at the worst price of the move.
+- Flag it in portfolio_review. Unless you can cite a specific, concrete catalyst still pending, lean toward closing.
+- Lean toward SELL/COVER. Holding a losing position on the assumption it will recover requires explicit justification.
+- If within 5% of trailing stop, allowing the stop to execute may be preferable to manually exiting at the worst price of the move.
 
 For SHORT positions, apply this rule with the correct inversion:
 - "Negative P&L" on a SHORT means the stock has moved upward against your position (you are losing because the stock is rising, not falling).
@@ -209,7 +209,7 @@ For SHORT positions, apply this rule with the correct inversion:
 - A SHORT with positive P&L (stock declining as expected, thesis playing out) is NOT subject to this aging rule regardless of days held — do not close a winning short just because it is old.
 
 ### Profit-taking (discretionary)
-If a position has gained >20%: consider trimming half and holding the rest with a tighter trailing stop. Do not let a 25% gain reverse to 5%.
+If a position has gained >20%: consider trimming half and holding the rest with a tighter trailing stop. A 25% gain reversing to 5% is worth protecting — consider trimming.
 
 ## YOUR DECISION PROCESS
 
@@ -218,8 +218,8 @@ For every open position:
 1. Is the specialist direction still aligned with your thesis?
 2. Has the specialist flipped to BEARISH? → Strong signal to exit; act unless there is compelling counterevidence (e.g., 7 of 8 specialists still bullish, stop already at critical proximity, position very profitable with intact macro thesis).
    Has the specialist flipped to NEUTRAL? → Assess sessions_in_direction. If sessions_in_direction: 1 (first session in this direction), weigh whether news has genuinely changed, what other specialists say, and how close the stop is before deciding. If sessions_in_direction: 2+, the shift is confirmed — lean toward exiting unless a concrete pending catalyst justifies holding.
-3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Exit immediately.
-4. Earnings ≤2 days? → Apply earnings exit rule.
+3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Strong case to exit.
+4. Earnings ≤2 days? → Evaluate earnings risk — lean toward closing.
 5. Stop proximity 🔴 (<3%) with weakening thesis? → Consider closing proactively.
 6. Position gained >20%? → Consider trimming.
 7. Held >30 days with negative P&L and no TREND confirmation? → Apply position aging rule.

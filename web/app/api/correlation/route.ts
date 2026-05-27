@@ -14,7 +14,12 @@ export async function GET(req: Request) {
       FROM stocks.correlation_matrix
       WHERE ticker_a = ANY(${tickers}) AND ticker_b = ANY(${tickers})
     `;
-    return NextResponse.json({ pairs: rows });
+    return NextResponse.json({
+      pairs: rows.map((r: Record<string, unknown>) => ({
+        ...r,
+        correlation: Number(r.correlation),
+      })),
+    });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

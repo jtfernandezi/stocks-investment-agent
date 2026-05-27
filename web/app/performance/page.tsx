@@ -269,8 +269,8 @@ export default function PerformancePage() {
   });
   const ddMin = drawdownData.length ? Math.min(...drawdownData.map(d => d.dd)) : -1;
 
-  // ── Rolling 5-day metrics ────────────────────────────────────────────────────
-  const WINDOW = 5;
+  // ── Rolling 3-day metrics ────────────────────────────────────────────────────
+  const WINDOW = 3;
   const rollingData = portRet.slice(WINDOW - 1).map((_, idx) => {
     const w = portRet.slice(idx, idx + WINDOW);
     const s = stddev(w);
@@ -304,8 +304,11 @@ export default function PerformancePage() {
   }
   for (const t of closedTrades) {
     const k = NICHE_DISPLAY[t.niche] ?? t.niche;
-    if (!secMap[k]) secMap[k] = { pnlUsd: 0, costBasis: 1 };
+    if (!secMap[k]) secMap[k] = { pnlUsd: 0, costBasis: 0 };
     secMap[k].pnlUsd += t.pnl_usd;
+    // Back-calculate invested amount so pnlPct stays meaningful for closed-only sectors
+    const invested = t.pnl_pct !== 0 ? Math.abs(t.pnl_usd / (t.pnl_pct / 100)) : 0;
+    secMap[k].costBasis += invested;
   }
   const sectorContrib = ALL_NICHES.map(n => {
     const k = NICHE_DISPLAY[n];
@@ -605,7 +608,7 @@ export default function PerformancePage() {
       </div>
 
       {/* Rolling Risk Charts */}
-      {rollingData.length > 0 && (
+      {rollingData.length >= 2 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-panel border border-rim rounded-xl p-5">
             <div className="mb-4">

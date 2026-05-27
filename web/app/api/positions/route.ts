@@ -18,10 +18,18 @@ interface AlpacaPos {
   change_today: string;
 }
 
+interface AlpacaOrder {
+  symbol: string;
+  type: string;
+  status: string;
+  stop_price: string | null;
+}
+
 export async function GET() {
   try {
-    const [alpacaPositions, entryRows, statusRows] = await Promise.all([
+    const [alpacaPositions, alpacaOrders, entryRows, statusRows] = await Promise.all([
       alpacaFetch<AlpacaPos[]>('/positions'),
+      alpacaFetch<AlpacaOrder[]>('/orders?status=open&limit=100'),
 
       // Most-recent BUY/SHORT action per ticker — gives entry thesis + stop
       sql`
@@ -71,6 +79,14 @@ export async function GET() {
     const statusByTicker: Record<string, typeof statusRows[0]> = {};
     for (const r of statusRows) statusByTicker[r.ticker as string] = r;
 
+    // Live trailing stop price per ticker from Alpaca open orders
+    const liveStopByTicker: Record<string, number> = {};
+    for (const o of alpacaOrders) {
+      if (o.type === 'trailing_stop' && o.stop_price) {
+        liveStopByTicker[o.symbol] = parseFloat(o.stop_price);
+      }
+    }
+
     const positions = alpacaPositions.map(p => {
       const entry  = entryByTicker[p.symbol];
       const status = statusByTicker[p.symbol];
@@ -78,9 +94,12 @@ export async function GET() {
       const entryPrice   = parseFloat(p.avg_entry_price);
       const currentPrice = parseFloat(p.current_price);
       const stopPct      = entry?.stop_pct_used != null ? parseFloat(String(entry.stop_pct_used)) : null;
-      const stopPrice    = stopPct != null
-        ? (side === 'LONG' ? entryPrice * (1 - stopPct / 100) : entryPrice * (1 + stopPct / 100))
-        : null;
+      // Use live Alpaca trailing stop price; fall back to entry-based estimate if no order found
+      const stopPrice    = liveStopByTicker[p.symbol] != null
+        ? liveStopByTicker[p.symbol]
+        : stopPct != null
+          ? (side === 'LONG' ? entryPrice * (1 - stopPct / 100) : entryPrice * (1 + stopPct / 100))
+          : null;
 
       return {
         ticker:              p.symbol,

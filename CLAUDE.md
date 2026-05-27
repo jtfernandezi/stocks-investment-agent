@@ -25,7 +25,7 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) �
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Fundamentals Refresh** — daily 8:30 AM ET Mon–Fri — workflow ID: `8hHaG6U0ToaHRAei`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Prepare Tickers] → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, and analyst consensus. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 80 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: two parallel branches]: (1) Prepare Tickers → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop; (2) Fetch Earnings Calendar (Finnhub `/calendar/earnings?from=today&to=today+30d`) → Parse Earnings → Store Earnings Calendar. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, analyst consensus, and upcoming earnings dates. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 80 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
 3-component attribution (A: Sector Accuracy, B: Entry Timing, C: Exit Timing) → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -51,6 +51,7 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [clos
 | `workflows/code/letter_store.js` | Main v2 | Parse & Store Letter |
 | `workflows/code/compute_correlation_matrix.js` | Main v2 | Compute Correlation Matrix |
 | `workflows/code/fundamentals_parse.js` | Fundamentals Refresh | Parse Fundamentals |
+| `workflows/code/fundamentals_parse_earnings.js` | Fundamentals Refresh | Parse Earnings |
 
 Prompts in `/prompts/` are the spec/reference versions. The prompts that actually execute are embedded as constants inside the Code node files above. When editing a prompt, update both.
 

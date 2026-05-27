@@ -21,6 +21,7 @@ Each specialist gives you:
 - Sector direction: BULLISH / BEARISH / NEUTRAL
 - Conviction: HIGH / MEDIUM / LOW
 - Confidence: 0.00–1.00
+- Sessions in direction: how many consecutive sessions (including today) this specialist has held the current direction. 1 = just changed this session (tentative — may reflect noise or stale news rather than a genuine shift). 2+ = held across multiple independent sessions (more reliable). Use this to calibrate how much weight to give a direction change.
 - Long picks: 2–3 stocks with thesis, catalyst, key risk, and earnings risk flag
 - Short picks: 1–2 stocks with thesis, catalyst, and key risk
 - Macro assessment and session summary

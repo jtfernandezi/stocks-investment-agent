@@ -25,7 +25,7 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
 ```
 [1]  Schedule Trigger (every 30 min, weekdays)
       ↓
-[2]  Check Market Open            (Code: watchdog_check_market.js)
+[2]  Fetch Market Status           (HTTP GET Finnhub /quote?symbol=SPY)
       ↓
 [3]  Is Market Open?              (IF: $json.market_open ? 'true' : 'false' equals 'true')
       ↓ TRUE                         ↓ FALSE
@@ -67,10 +67,9 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
 
 ---
 
-### [2] Check Market Open
-- Node type: Code (`watchdog_check_market.js`)
-- Output: `{ market_open: true | false, checked_at, reason? }`
-- Window: 10:00 AM–3:30 PM ET — DST-safe via `Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York' })` (no hardcoded UTC offsets)
+### [2] Fetch Market Status
+- Node type: HTTP Request (Finnhub `/quote?symbol=SPY`)
+- Output fed to [3] Is Market Open? IF node which checks Finnhub `isOpen` field
 
 ---
 

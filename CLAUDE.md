@@ -42,21 +42,14 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [clos
 | `workflows/code/07_parse_orchestrator_output.js` | Main v2 | Parse Orchestrator Output |
 | `workflows/code/08_prepare_trade_actions.js` | Main v2 | Prepare Trade Actions |
 | `workflows/code/09_process_post_trade.js` | Main v2 | Process Post-Trade |
-| `workflows/code/watchdog_check_market.js` | Watchdog | _(deprecated — replaced by Finnhub Fetch Market Status + Is Market Open? IF node)_ |
 | `workflows/code/watchdog_has_open_positions.js` | Watchdog | Has Open Positions? |
 | `workflows/code/watchdog_build_news_prompt.js` | Watchdog | Build News Prompt |
 | `workflows/code/watchdog_parse_flip.js` | Watchdog | Parse Flip Response |
-| `workflows/code/watchdog_check.js` | _(deprecated — old watchdog, closes blindly without orchestrator)_ | — |
-| `workflows/code/watchdog_build_message.js` | _(deprecated — superseded by watchdog_build_news_prompt.js)_ | — |
-| `workflows/code/watchdog_tag_signal.js` | _(deprecated — no longer needed, single LLM call replaces 8 branches)_ | — |
-| `workflows/code/watchdog_compare_signals.js` | _(deprecated — superseded by watchdog_parse_flip.js)_ | — |
 | `workflows/code/post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
 | `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
 | `workflows/code/letter_build_prompt.js` | Main v2 | Build Letter Prompt (close sessions only) |
 | `workflows/code/letter_store.js` | Main v2 | Parse & Store Letter |
 | `workflows/code/fundamentals_parse.js` | Fundamentals Refresh | Parse Fundamentals |
-
-_(v1 files 03_prepare_rss_sources.js, 04_build_specialist_inputs.js, 05_parse_specialist_outputs.js — kept for reference, used by v1 backup workflow only)_
 
 Prompts in `/prompts/` are the spec/reference versions. The prompts that actually execute are embedded as constants inside the Code node files above. When editing a prompt, update both.
 
@@ -95,7 +88,6 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 - `Workflow Trigger` — referenced by `post_mortem_build_input.js`
 - `Load Signals During Hold` — referenced by `post_mortem_build_input.js`
 - `Build Post-Mortem Input` — referenced by `post_mortem_store.js`
-- `Fetch Latest Signals`, `Fetch Open Positions` — referenced by `watchdog_check.js` _(deprecated)_
 - `Has Open Positions?` — referenced by `watchdog_build_news_prompt.js`
 
 ## Critical: OpenAI Node Versions
@@ -139,7 +131,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 - **Store All Signals node**: set `alwaysOutputData: true` — an `INSERT` without `RETURNING` returns 0 rows; n8n sees no output and stops execution. The SQL also uses `ON CONFLICT (niche, session) DO UPDATE SET ...` to upsert (overwrite stale signals on re-runs).
 - **specialist_signals table**: has a `UNIQUE (niche, session)` constraint. The upsert ensures exactly 1 canonical row per niche/session slot.
 - **Post-mortem trigger**: uses Execute Workflow node (workflow-to-workflow), NOT an HTTP webhook
-- **Watchdog flip response**: when `watchdog_compare_signals.js` detects a flip, it outputs flip context and triggers the orchestrator via Execute Workflow. The orchestrator (not the watchdog) decides whether to close or hold the position. Emergency manual close is still possible via `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders.
+- **Watchdog flip response**: when `watchdog_parse_flip.js` detects a flip, it outputs flip context and triggers the orchestrator via Execute Workflow. The orchestrator (not the watchdog) decides whether to close or hold the position. Emergency manual close is still possible via `DELETE /positions/{ticker}` — atomically closes position AND cancels all associated orders.
 - **SELL/COVER execution**: uses `DELETE /v2/positions/{ticker}` (not a market sell order). This atomically closes the position AND cancels all associated GTC orders in one call. A GTC trailing stop locks shares, so a plain market SELL will be rejected with "insufficient qty available" if a stop is already attached. The `Is Closing Position?` IF node routes SELL/COVER to `Close Position` (HTTP DELETE) and BUY/SHORT to `Execute Market Order` (HTTP POST). Both merge back at `Merge Trade Actions` before `Restore Trade Context`.
 - **Restore Trade Context**: Code node between Merge Trade Actions and Needs Trailing Stop?. Re-attaches `ticker`, `action`, `shares`, `stop_pct_used`, `needs_trailing_stop` from Prepare Trade Actions into `$json` after the Alpaca response overwrites it. Uses symbol-based matching (not array index) so branch-merge ordering doesn't matter.
 - **Hard limits in Prepare Trade Actions**: All four limits are enforced in code in `08_prepare_trade_actions.js`, regardless of what the orchestrator outputs. (1) Max 12 open positions. (2) Per-sector: 1st long always allowed; 2nd long only with TREND pattern + ≤$5k; 3rd long blocked; max 1 short per sector. (3) Max $12k total short exposure. (4) Cash guard — cumulative BUY/SHORT `size_usd` cannot exceed available cash. SELL/COVER always pass all four checks. A `TICKER_NICHE` lookup table (all 80 tickers) embedded in 08 drives per-sector tracking from current Alpaca positions.

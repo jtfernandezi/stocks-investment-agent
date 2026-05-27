@@ -176,10 +176,15 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Rolling metrics window reduced** — Rolling Sharpe Ratio and Rolling Volatility charts used WINDOW=5, producing a single dot with only 5 trading days of history. Reduced to WINDOW=3 (gives 3 chart points from day 5 onward). Added `rollingData.length >= 2` guard to hide charts entirely when there's only 1 point.
 - **Duplicate BUY/SHORT guard in `08`** — `Prepare Trade Actions` now builds `openTickers` from current Alpaca positions and blocks any BUY or SHORT for a ticker already held, regardless of what the orchestrator outputs. Enforced as check #0 before all other hard limits. Prevents the duplicate-buy scenario (e.g., ZS bought 3× on 2026-05-20 due to concurrent workflow runs).
 - **Orchestrator prompt — no duplicate entries, no same-session flip** — Added to the Hard Portfolio Limits section: (1) Never issue BUY for a ticker already held long, or SHORT for a ticker already held short. (2) To flip a long to short (or vice versa), issue the SELL/COVER this session and open the opposite side in a future session — never combine SELL+SHORT or COVER+BUY for the same ticker in the same session output.
+- **Orchestrator prompt — quality improvements** — Removed "critical failure state" / "unacceptable" language that created excessive trading pressure. Added NET EXPOSURE MANAGEMENT section with regime-aware targets (60–110% bull / 20–60% flat / −20–+30% bear). Added `rejected_candidates` and `risk_summary` to output schema so the orchestrator documents what it considered and why it passed.
+- **Post-mortem simplified to 3 attribution components** — Removed Component B (Stock Selection Quality): alternative picks data was never captured at entry time, making the component always blind and causing hallucinated `stock_selection_quality` values. Components renumbered: A = Sector Accuracy, B = Entry Timing, C = Exit Timing. `stock_selection_quality` and `alternative_picks` columns dropped from `trade_lessons`. Both workflows and prompts updated.
+- **`pnl_usd` locked to computed value** — `post_mortem_store.js` previously let the LLM override the system-computed P&L (`parsed.pnl_usd ?? inputCtx.pnl_usd`). Flipped to `inputCtx.pnl_usd ?? parsed.pnl_usd` so the value derived from actual entry/exit prices always wins.
+- **`position_metadata` backfilled** — All 5 pre-2026-05-25 positions (CEG, CRWD, MSFT, NVDA, SCCO) manually backfilled with accurate entry date (2026-05-20), Alpaca `avg_entry_price`, niche, original thesis, and signal_history_pattern sourced from `portfolio_snapshots`.
+- **Post-mortem confirmed live** — First real orchestrator-initiated SELL/COVER post-mortem ran successfully for ZS on 2026-05-27 (execution 353). Full chain verified: Workflow Trigger → Load Signals → ETF Bars → Build Input → LLM → Parse → Insert Trade Lesson → Update Specialist Accuracy → Update Pattern Performance ✓
 
 ## Known Open Issues
 
-Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only tested via pinned data, which bypasses `post_mortem_payloads`). Will fire automatically on the first live orchestrator-initiated SELL/COVER.
+None. All previously tracked issues resolved as of 2026-05-27.
 
 ## position_metadata notes
 
@@ -187,7 +192,7 @@ Post-mortem end-to-end — not yet triggered by a real orchestrator SELL (only t
 - Read by "Load Position Metadata" in Main Analysis v2 — provides `days_held`, `entry_niche`, `entry_thesis` on all open positions in `02_compute_derived_metrics.js`
 - Read by "Load Position Entry" in Post-Mortem workflow — provides actual `entry_date` and `entry_price` for attribution
 - ETF return: computed by "Prepare ETF Fetch" → "Fetch ETF Bars" → "Compute ETF Return" in Post-Mortem using the actual hold period dates; fed to `post_mortem_build_input.js` via `$("Compute ETF Return").first().json.etf_return`
-- Cold-start: positions opened before 2026-05-25 have no metadata row. Post-mortem falls back to exit_date − 30 days for entry_date on those trades.
+- Cold-start: positions opened before 2026-05-25 (CEG, CRWD, MSFT, NVDA, SCCO) were manually backfilled on 2026-05-27 with entry date/price/thesis/pattern from `portfolio_snapshots`. All current positions have metadata rows.
 
 ## Workflow Schedule Summary (all times ET, Mon–Fri)
 

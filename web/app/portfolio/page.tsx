@@ -131,7 +131,7 @@ function buildMatrix(tickers: string[], pairs: CorrPair[]): number[][] {
   );
   for (const pair of pairs) {
     const i = idx[pair.ticker_a], j = idx[pair.ticker_b];
-    if (i != null && j != null) { m[i][j] = pair.correlation; m[j][i] = pair.correlation; }
+    if (i != null && j != null) { const c = Number(pair.correlation); m[i][j] = c; m[j][i] = c; }
   }
   return m;
 }

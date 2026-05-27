@@ -4,8 +4,8 @@
 // Outputs one item with bulk UPSERT SQL for pairs with |corr| >= 0.50.
 
 const bars = $('Fetch Price Bars').first().json.bars || {};
-const LOOKBACK  = 90;
-const MIN_CORR  = 0.50;
+const LOOKBACK = 90;
+const MIN_CORR = 0.50;
 
 // Build 90-day daily return series per ticker
 const returns = {};

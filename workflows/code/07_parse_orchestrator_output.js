@@ -163,6 +163,8 @@ return [{
     portfolio_actions:         enrichedActions,
     portfolio_review:          parsed.portfolio_review         || [],
     watchlist:                 parsed.watchlist                 || [],
+    rejected_candidates:       parsed.rejected_candidates      || [],
+    risk_summary:              parsed.risk_summary             || null,
     cash_deployment_rationale: parsed.cash_deployment_rationale || '',
     orchestrator_summary:      parsed.orchestrator_summary      || '',
 

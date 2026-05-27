@@ -68,16 +68,6 @@ const SECTOR_ETF = {
 const etfTicker     = SECTOR_ETF[webhook.niche] || 'SPY';
 // sectorEtfReturn populated from Compute ETF Return node (see top of file)
 
-// ── ALTERNATIVE PICKS PERFORMANCE ────────────────────────────────────────────
-// alt_tickers + alt_returns come from the webhook payload
-// (Main analysis stores alternative picks when opening a position, passed forward on close)
-const altPicks = webhook.alt_tickers || [];
-const altReturns = webhook.alt_returns || {};  // { TICKER: pnl_pct_same_period }
-const alternativePicksFormatted = altPicks.map(t => ({
-  ticker: t,
-  pnl_pct_same_period: altReturns[t] != null ? parseFloat(altReturns[t].toFixed(2)) : null,
-}));
-
 // ── BUILD SPECIALIST PROMPT ───────────────────────────────────────────────────
 const POST_MORTEM_SYSTEM_PROMPT = `You are a quantitative trade analyst specialized in post-mortem attribution analysis.
 Your job is to analyze a recently closed trading position and produce a structured,
@@ -100,8 +90,6 @@ You receive the complete record of a closed position:
 - SIGNAL HISTORY DURING HOLD: what the specialist said in each session while the
   position was open (direction + confidence per session)
 - SECTOR PERFORMANCE: how the sector ETF benchmark performed during the same period
-- ALTERNATIVE PICKS: the other stocks the specialist recommended the same day we
-  entered, and their performance during the same hold period
 
 ## YOUR ANALYTICAL FRAMEWORK
 
@@ -116,17 +104,7 @@ performance (sector ETF return) during the hold period.
 This isolates whether the specialist's macro sector call was right, independently
 of the specific stock outcome.
 
-### Attribution Component B — Stock Selection Quality
-Given that we had multiple picks to choose from, did we choose the best one?
-Compare our stock's return against all alternative picks the specialist offered
-during the same hold period.
-- OPTIMAL: our pick was the best or within 2% of the best performing pick
-- SUBOPTIMAL: another pick outperformed ours by 2–8%
-- POOR: another pick outperformed ours by >8%, or we picked the worst performer
-
-This isolates whether the stock selection decision (by the orchestrator) was sound.
-
-### Attribution Component C — Entry Timing Quality
+### Attribution Component B — Entry Timing Quality
 Did we enter at a good point in the trend?
 Analyze the signal history before our entry. Consider:
 - Did we enter on a TREND pattern (4+/5 confirming sessions)?
@@ -143,7 +121,7 @@ Assessment:
 - LATE: we entered after the bulk of the move was already done — limited upside,
   expanded downside
 
-### Attribution Component D — Exit Timing Quality
+### Attribution Component C — Exit Timing Quality
 Did we exit at the right time?
 - For SELL/COVER via thesis_flip: was this the right call? Did the stock continue
   in our direction after we exited (we exited too early) or did it reverse further
@@ -162,7 +140,7 @@ Assessment:
 - LATE: we held too long and gave back gains, or a smaller loss became a larger one
 
 ### Pattern Tag Assignment
-Categorize the trade into one or more of these setup archetypes:
+Categorize the trade into one of these setup archetypes:
 - pre_earnings_drift: entered before earnings expecting a run-up, exited before report
 - post_earnings_momentum: entered after earnings on strong results
 - eia_data_catalyst: oil/energy trade driven by EIA weekly inventory data
@@ -215,15 +193,10 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
   "entry_pattern": "TREND",
   "exit_reason": "profit_taking",
   "sector_accuracy": "CORRECT" | "INCORRECT" | "NEUTRAL",
-  "stock_selection_quality": "OPTIMAL" | "SUBOPTIMAL" | "POOR",
   "entry_timing": "EARLY" | "OPTIMAL" | "LATE",
   "exit_timing": "EARLY" | "OPTIMAL" | "LATE",
   "key_lesson": "One precise, actionable sentence about what to replicate or avoid",
   "pattern_tag": "pre_earnings_drift",
-  "alternative_picks": [
-    {"ticker": "PANW", "pnl_pct_same_period": 8.2},
-    {"ticker": "ZS", "pnl_pct_same_period": -1.3}
-  ],
   "entry_specialist_confidence": 0.87,
   "entry_effective_confidence": 0.87
 }`;
@@ -256,11 +229,6 @@ ${holdSignals || 'No signal history available for hold period.'}
 **Sector ETF (${etfTicker}) Performance During Same Period:**
 ${sectorEtfReturn != null ? `${sectorEtfReturn.toFixed(2)}% return` : 'Could not retrieve sector ETF data.'}
 
-**Alternative Picks (same niche, available at entry):**
-${alternativePicksFormatted.length > 0
-  ? alternativePicksFormatted.map(p => `- ${p.ticker}: ${p.pnl_pct_same_period != null ? p.pnl_pct_same_period + '%' : 'return not available'}`).join('\n')
-  : 'No alternative picks recorded for this trade.'}
-
 Produce the post-mortem analysis.`;
 
 return [{
@@ -279,7 +247,6 @@ return [{
     exit_date:         exitDate,
     entry_pattern:     webhook.signal_history_pattern,
     exit_reason:       webhook.exit_reason,
-    alternative_picks: JSON.stringify(alternativePicksFormatted),
     entry_specialist_confidence: webhook.entry_specialist_confidence,
     entry_effective_confidence:  webhook.entry_effective_confidence,
   }

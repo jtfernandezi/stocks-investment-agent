@@ -15,10 +15,12 @@ const specialists = specialistsRaw.map(s => {
   let coldStartCap   = null;
   if      (totalSignals < 5)  coldStartCap = 0.72;
   else if (totalSignals < 10) coldStartCap = 0.78;
+  const sessionsInDir = computeSessionsInDirection(s.direction, (ctx.signalsByNiche || {})[s.niche]);
+
   if (coldStartCap !== null && (s.effective_confidence || 0) > coldStartCap) {
-    return { ...s, effective_confidence: coldStartCap, cold_start: true, cold_start_signals: totalSignals, cold_start_cap: coldStartCap };
+    return { ...s, effective_confidence: coldStartCap, cold_start: true, cold_start_signals: totalSignals, cold_start_cap: coldStartCap, sessions_in_direction: sessionsInDir };
   }
-  return { ...s, cold_start: false, cold_start_signals: totalSignals };
+  return { ...s, cold_start: false, cold_start_signals: totalSignals, sessions_in_direction: sessionsInDir };
 });
 
 // ── HELPER: Format positions ──────────────────────────────────────────────────
@@ -55,6 +57,22 @@ function formatPositions(positions, stopProximity, earningsAtRisk, priceMap) {
   }).join('\n\n');
 }
 
+// ── HELPER: Consecutive sessions in current direction ────────────────────────
+// Counts how many consecutive sessions (including today) the specialist has held
+// the current direction, using the prior-session history already in ctx.
+function computeSessionsInDirection(currentDirection, signalHistory) {
+  if (!signalHistory || !signalHistory.formatted) return 1;
+  const dirRegex  = /(BULLISH|BEARISH|NEUTRAL)/g;
+  const priorDirs = [...signalHistory.formatted.matchAll(dirRegex)].map(m => m[1]);
+  // priorDirs is oldest→newest; walk backward from most recent
+  let streak = 1;
+  for (let i = priorDirs.length - 1; i >= 0; i--) {
+    if (priorDirs[i] === currentDirection) streak++;
+    else break;
+  }
+  return streak;
+}
+
 // ── HELPER: Format signal history ─────────────────────────────────────────────
 function formatSignalHistory(signalsByNiche) {
   return Object.entries(signalsByNiche).map(([niche, data]) => {
@@ -70,8 +88,9 @@ function formatSpecialistSignals(specialists) {
     const shortPicks = (s.short_picks || []).map(p => `    SHORT ${p.ticker}: ${p.thesis} | Risk: ${p.key_risk} | Earnings: ${p.earnings_risk}`).join('\n');
     const coldFlag   = s.cold_start ? ` ← COLD-START (${s.cold_start_signals} sessions, capped at ${s.cold_start_cap})` : '';
     const convFlag   = !s.cold_start && s.effective_confidence < 0.75 ? ' ← BELOW TRADING THRESHOLD' : '';
+    const sidStr     = s.sessions_in_direction === 1 ? `1 (first session — tentative)` : `${s.sessions_in_direction} (confirmed)`;
     return [
-      `### ${s.niche.toUpperCase()} | ${s.direction} | ${s.effective_conviction} | effective_conf: ${s.effective_confidence} (raw: ${s.confidence}, scaling: ${s.scaling_factor}x)${coldFlag}${convFlag}`,
+      `### ${s.niche.toUpperCase()} | ${s.direction} | ${s.effective_conviction} | effective_conf: ${s.effective_confidence} (raw: ${s.confidence}, scaling: ${s.scaling_factor}x) | sessions_in_direction: ${sidStr}${coldFlag}${convFlag}`,
       `  Macro: ${s.macro_assessment}`,
       longPicks  ? `  Long picks:\n${longPicks}`   : '  No long picks.',
       shortPicks ? `  Short picks:\n${shortPicks}` : '  No short picks.',
@@ -86,10 +105,15 @@ function formatPatternPerf(patternPerfMap) {
   return patterns.map(p => {
     const data = patternPerfMap[p] || {};
     if (!data.total_trades) return `  ${p.padEnd(14)}: No data yet`;
-    const ev   = data.expected_value != null ? data.expected_value.toFixed(2) + '%' : 'N/A';
-    const warn = (data.expected_value != null && data.expected_value < 0) ? ' ← NEGATIVE EV — DO NOT TRADE' : '';
-    const note = (data.expected_value != null && data.expected_value < 1.0 && data.expected_value >= 0) ? ' ← LOW EV — apply noise penalty' : '';
-    return `  ${p.padEnd(14)}: win ${data.win_rate != null ? (data.win_rate * 100).toFixed(0) + '%' : 'N/A'} | avg_win ${data.avg_win_pct != null ? data.avg_win_pct.toFixed(1) + '%' : 'N/A'} | avg_loss ${data.avg_loss_pct != null ? data.avg_loss_pct.toFixed(1) + '%' : 'N/A'} | EV ${ev} (${data.total_trades} trades)${warn}${note}`;
+    // Postgres NUMERIC columns arrive as strings — parse before arithmetic/toFixed
+    const ev_num  = data.expected_value != null ? parseFloat(data.expected_value) : null;
+    const wr_num  = data.win_rate        != null ? parseFloat(data.win_rate)        : null;
+    const win_num = data.avg_win_pct     != null ? parseFloat(data.avg_win_pct)     : null;
+    const los_num = data.avg_loss_pct    != null ? parseFloat(data.avg_loss_pct)    : null;
+    const ev   = ev_num  != null ? ev_num.toFixed(2)  + '%' : 'N/A';
+    const warn = ev_num  != null && ev_num  < 0              ? ' ← NEGATIVE EV — DO NOT TRADE'    : '';
+    const note = ev_num  != null && ev_num  < 1.0 && ev_num >= 0 ? ' ← LOW EV — apply noise penalty' : '';
+    return `  ${p.padEnd(14)}: win ${wr_num  != null ? (wr_num * 100).toFixed(0) + '%' : 'N/A'} | avg_win ${win_num != null ? win_num.toFixed(1) + '%' : 'N/A'} | avg_loss ${los_num != null ? los_num.toFixed(1) + '%' : 'N/A'} | EV ${ev} (${data.total_trades} trades)${warn}${note}`;
   }).join('\n');
 }
 
@@ -149,6 +173,7 @@ Each specialist gives you:
 - Sector direction: BULLISH / BEARISH / NEUTRAL
 - Conviction: HIGH / MEDIUM / LOW
 - Confidence: 0.00–1.00
+- Sessions in direction: how many consecutive sessions (including today) this specialist has held the current direction. 1 = just changed this session (tentative — may reflect noise or stale news rather than a genuine shift). 2+ = held across multiple independent sessions (more reliable). Use this to calibrate how much weight to give a direction change.
 - Long picks: 2–3 stocks with thesis, catalyst, key risk, and earnings risk flag
 - Short picks: 1–2 stocks with thesis, catalyst, and key risk
 - Macro assessment and session summary
@@ -303,6 +328,7 @@ If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ### Hard portfolio limits (enforced by code — your output is filtered against these)
 - Maximum 12 open positions simultaneously (longs + shorts combined)
+- Never issue a BUY for a ticker you already hold a long position in. Never issue a SHORT for a ticker you already hold a short position in. Adding to an existing position is not supported — if the open positions list contains a ticker, it is off-limits for new entries. If you want to flip a long to a short (or vice versa): issue the SELL or COVER this session to close the existing position, and consider opening the opposite side in a future session once the close is confirmed. Never issue a SELL and a SHORT for the same ticker in the same session output, and never issue a COVER and a BUY for the same ticker in the same session output.
 - Per sector limits:
   - Maximum 1 SHORT per sector. Never open a second short in a sector you already hold a short in.
   - First LONG in a sector: always permitted (subject to conviction threshold).
@@ -314,10 +340,11 @@ If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ## EXIT RULES
 
-### Thesis stop (mandatory, no exceptions)
-Close a position immediately when the specialist for that sector changes direction:
-- Long position: specialist flips BULLISH → BEARISH or NEUTRAL → SELL
-- Short position: specialist flips BEARISH → BULLISH or NEUTRAL → COVER
+### Direction change assessment
+When a specialist's direction changes from your entry signal, assess whether the thesis remains intact:
+- Long position: specialist flips BULLISH → BEARISH → SELL. Strong evidence of deterioration; act.
+- Long position: specialist flips BULLISH → NEUTRAL → use judgment. Check sessions_in_direction: if this is the first NEUTRAL session (sessions_in_direction: 1), weigh it against whether news has genuinely changed, stop proximity, and what other specialists say before deciding. A sustained NEUTRAL (sessions_in_direction: 2+) with no recovery warrants a SELL.
+- Short position: apply the inverse logic (BEARISH confirms; BULLISH or sustained NEUTRAL threatens).
 
 ### Earnings exit (default behavior)
 If an open position has earnings ≤2 days: DEFAULT is to close before the event. Hold ONLY if (a) thesis remains intact, (b) analyst consensus strongly expects a beat, (c) position is profitable, AND (d) specialist has HIGH conviction this session. Document exception explicitly.
@@ -341,7 +368,8 @@ If a position has gained >20%: consider trimming half and holding the rest with 
 ### Step 1 — Portfolio Review
 For every open position:
 1. Is the specialist direction still aligned with your thesis?
-2. Has the specialist flipped? → Exit immediately. No exceptions.
+2. Has the specialist flipped to BEARISH? → Strong signal to exit; act unless there is compelling counterevidence (e.g., 7 of 8 specialists still bullish, stop already at critical proximity, position very profitable with intact macro thesis).
+   Has the specialist flipped to NEUTRAL? → Assess sessions_in_direction. If sessions_in_direction: 1 (first session in this direction), weigh whether news has genuinely changed, what other specialists say, and how close the stop is before deciding. If sessions_in_direction: 2+, the shift is confirmed — lean toward exiting unless a concrete pending catalyst justifies holding.
 3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Exit immediately.
 4. Earnings ≤2 days? → Apply earnings exit rule.
 5. Stop proximity 🔴 (<3%) with weakening thesis? → Consider closing proactively.
@@ -356,10 +384,8 @@ thesis_intact in your portfolio_review output:
 - SHORT + specialist BEARISH → thesis confirmed → thesis_intact: true (hold)
 - SHORT + specialist BULLISH → thesis threatened → thesis_intact: false (→ triggers item 2, COVER)
 - SHORT + specialist NEUTRAL → thesis uncertain. Do not assume this is safe.
-  Ask: was the sector previously clearly BEARISH (the reason you entered the short), and has
-  it now settled to NEUTRAL without the original catalyst resolving? If yes, the short thesis
-  is likely exhausted — the bear case has faded without fully playing out. Flag thesis_intact: false
-  and apply position aging (item 7) and stop proximity (item 5) to determine whether to COVER.
+  Check sessions_in_direction first: if this is the first NEUTRAL session (sessions_in_direction: 1), the signal may reflect noise or stale data — do not automatically set thesis_intact: false. Ask whether the news has genuinely changed before acting.
+  If sessions_in_direction: 2+: ask whether the sector was previously clearly BEARISH (the reason you entered the short), and has it now settled to NEUTRAL without the original catalyst resolving? If yes, the short thesis is likely exhausted — the bear case has faded without fully playing out. Flag thesis_intact: false and apply position aging (item 7) and stop proximity (item 5) to determine whether to COVER.
   If the sector was always mixed and NEUTRAL is consistent with the entry context, thesis_intact: true.
 
 The failure mode to avoid: seeing a BEARISH specialist signal on a stock you are SHORT and

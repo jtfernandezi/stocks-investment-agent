@@ -31,6 +31,7 @@ const MAX_SHORT_USD  = 12000;
 
 // Build current state from open positions (pre-trade snapshot)
 const currentPositions = $("Compute Derived Metrics").first().json.positions || [];
+const openTickers = new Set(currentPositions.map(p => p.symbol));
 let openCount    = currentPositions.length;
 let shortExposure = currentPositions
   .filter(p => parseFloat(p.qty) < 0)
@@ -95,6 +96,12 @@ const filteredActions = actions.filter(action => {
   const niche   = action.niche;
   const side    = isBuy ? 'long' : 'short';
   const cost    = action.size_usd || 0;
+
+  // 0. Already-open guard — block duplicate BUY/SHORT for a ticker already held
+  if (openTickers.has(action.ticker)) {
+    console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: position already open`);
+    return false;
+  }
 
   // 1. Max positions cap
   if (openCount >= MAX_POSITIONS) {

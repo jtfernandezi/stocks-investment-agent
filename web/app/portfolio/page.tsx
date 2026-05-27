@@ -151,63 +151,67 @@ function ExpandableRow({ p }: { p: Position }) {
         className="border-b border-rim/40 hover:bg-ink/[0.03] transition-colors cursor-pointer"
         onClick={() => setOpen(o => !o)}
       >
-        <td className="px-5 py-4 w-4">
-          {open ? <ChevronDown size={14} className="text-dim" /> : <ChevronRight size={14} className="text-dim" />}
+        <td className="px-3 py-2 w-4">
+          {open ? <ChevronDown size={12} className="text-dim" /> : <ChevronRight size={12} className="text-dim" />}
         </td>
-        <td className="px-5 py-4">
+        <td className="px-3 py-2">
           <div className="font-semibold text-ink">{p.ticker}</div>
-          <div className="text-xs text-dim">{p.nicheDisplay}</div>
+          <div className="text-[10px] text-dim">{p.nicheDisplay}</div>
         </td>
-        <td className="px-5 py-4">
-          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
+        <td className="px-3 py-2">
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
             {p.side}
           </span>
         </td>
-        <td className="px-5 py-4 font-mono text-ink">{p.shares.toFixed(2)}</td>
-        <td className="px-5 py-4 font-mono text-dim">{usd(p.entryPrice)}</td>
-        <td className="px-5 py-4 font-mono text-ink">{usd(p.currentPrice)}</td>
-        <td className={`px-5 py-4 font-mono font-medium ${up ? 'text-gain' : 'text-loss'}`}>
+        <td className="px-3 py-2 font-mono text-ink">{p.shares.toFixed(2)}</td>
+        <td className="px-3 py-2 font-mono text-dim">{usd(p.entryPrice)}</td>
+        <td className="px-3 py-2 font-mono text-ink">{usd(p.currentPrice)}</td>
+        <td className="px-3 py-2 font-mono text-dim">{usd(p.marketValue)}</td>
+        <td className={`px-3 py-2 font-mono font-medium ${up ? 'text-gain' : 'text-loss'}`}>
           {up ? '+' : '−'}{usd(p.pnl)}
         </td>
-        <td className={`px-5 py-4 font-mono font-medium ${up ? 'text-gain' : 'text-loss'}`}>
+        <td className={`px-3 py-2 font-mono font-medium ${up ? 'text-gain' : 'text-loss'}`}>
           {up ? '+' : ''}{p.pnlPct.toFixed(2)}%
         </td>
-        <td className="px-5 py-4 font-mono text-dim">
+        <td className="px-3 py-2 font-mono text-dim">
           {p.stopPct != null ? `${p.stopPct.toFixed(1)}%` : '—'}
         </td>
-        <td className={`px-5 py-4 font-mono ${nearStop ? 'text-yellow-400 font-semibold' : 'text-dim'}`}>
+        <td className="px-3 py-2 font-mono text-dim">
+          {p.stopPrice != null ? usd(p.stopPrice) : '—'}
+        </td>
+        <td className={`px-3 py-2 font-mono ${nearStop ? 'text-yellow-400 font-semibold' : 'text-dim'}`}>
           {p.distToStop != null ? usd(p.distToStop) : '—'}
         </td>
-        <td className="px-5 py-4 font-mono text-dim">
+        <td className="px-3 py-2 font-mono text-dim">
           {p.changeToday >= 0 ? '+' : ''}{p.changeToday.toFixed(2)}%
         </td>
-        <td className="px-5 py-4">
+        <td className="px-3 py-2">
           {p.effectiveConfidence != null ? (
-            <div className="flex items-center gap-2 min-w-[72px]">
+            <div className="flex items-center gap-1.5 min-w-[64px]">
               <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
                 <div className="h-full bg-accent rounded-full" style={{ width: `${p.effectiveConfidence * 100}%` }} />
               </div>
-              <span className="font-mono text-xs text-dim">{p.effectiveConfidence.toFixed(2)}</span>
+              <span className="font-mono text-[10px] text-dim">{p.effectiveConfidence.toFixed(2)}</span>
             </div>
           ) : <span className="text-dim">—</span>}
         </td>
-        <td className="px-5 py-4">
+        <td className="px-3 py-2">
           {thesisValid
-            ? <ShieldCheck size={14} className="text-gain" />
-            : <AlertTriangle size={14} className="text-yellow-400" />}
+            ? <ShieldCheck size={12} className="text-gain" />
+            : <AlertTriangle size={12} className="text-yellow-400" />}
         </td>
         {nearStop ? (
-          <td className="px-5 py-4">
-            <span className="text-xs bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2 py-0.5 rounded-full">
+          <td className="px-3 py-2">
+            <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-1.5 py-0.5 rounded-full">
               {p.stopProximity}
             </span>
           </td>
-        ) : <td className="px-5 py-4" />}
+        ) : <td className="px-3 py-2" />}
       </tr>
 
       {open && (
         <tr className="border-b border-rim/40 bg-surface/60">
-          <td colSpan={15} className="px-8 py-5">
+          <td colSpan={17} className="px-8 py-5">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-2">
                 <p className="text-xs text-dim uppercase tracking-wider font-medium">Orchestrator Entry Reasoning</p>
@@ -346,12 +350,12 @@ export default function PortfolioPage() {
           <div className="px-5 py-10 text-center text-xs text-dim">No open positions</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-rim">
-                  <th className="px-5 py-3 w-4" />
-                  {['Ticker', 'Side', 'Shares', 'Entry', 'Current', 'P&L', 'P&L %', 'Stop', 'Dist to Stop', 'Day Δ', 'Confidence', 'Thesis', 'Alert'].map(h => (
-                    <th key={h} className="text-left text-xs text-dim font-medium uppercase tracking-wider px-5 py-3 whitespace-nowrap">{h}</th>
+                  <th className="px-3 py-2 w-4" />
+                  {['Ticker', 'Side', 'Shares', 'Entry', 'Current', 'Size', 'P&L', 'P&L %', 'Stop %', 'Stop $', 'Dist to Stop', 'Day Δ', 'Conf', 'Thesis', 'Alert'].map(h => (
+                    <th key={h} className="text-left text-[10px] text-dim font-medium uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
               </thead>

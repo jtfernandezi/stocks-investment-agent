@@ -175,6 +175,7 @@ If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ### Hard portfolio limits (enforced by code — your output is filtered against these)
 - Maximum 12 open positions simultaneously (longs + shorts combined)
+- Never issue a BUY for a ticker you already hold a long position in. Never issue a SHORT for a ticker you already hold a short position in. Adding to an existing position is not supported — if the open positions list contains a ticker, it is off-limits for new entries. If you want to flip a long to a short (or vice versa): issue the SELL or COVER this session to close the existing position, and consider opening the opposite side in a future session once the close is confirmed. Never issue a SELL and a SHORT for the same ticker in the same session output, and never issue a COVER and a BUY for the same ticker in the same session output.
 - Per sector limits:
   - Maximum 1 SHORT per sector. Never open a second short in a sector you already hold a short in.
   - First LONG in a sector: always permitted (subject to conviction threshold).
@@ -186,10 +187,11 @@ If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ## EXIT RULES
 
-### Thesis stop (mandatory, no exceptions)
-Close a position immediately when the specialist for that sector changes direction:
-- Long position: specialist flips BULLISH → BEARISH or NEUTRAL → SELL
-- Short position: specialist flips BEARISH → BULLISH or NEUTRAL → COVER
+### Direction change assessment
+When a specialist's direction changes from your entry signal, assess whether the thesis remains intact:
+- Long position: specialist flips BULLISH → BEARISH → SELL. Strong evidence of deterioration; act.
+- Long position: specialist flips BULLISH → NEUTRAL → use judgment. Check sessions_in_direction: if this is the first NEUTRAL session (sessions_in_direction: 1), weigh it against whether news has genuinely changed, stop proximity, and what other specialists say before deciding. A sustained NEUTRAL (sessions_in_direction: 2+) with no recovery warrants a SELL.
+- Short position: apply the inverse logic (BEARISH confirms; BULLISH or sustained NEUTRAL threatens).
 
 ### Earnings exit (default behavior)
 If an open position has earnings ≤2 days: DEFAULT is to close before the event. Hold ONLY if (a) thesis remains intact, (b) analyst consensus strongly expects a beat, (c) position is profitable, AND (d) specialist has HIGH conviction this session. Document exception explicitly.
@@ -213,7 +215,8 @@ If a position has gained >20%: consider trimming half and holding the rest with 
 ### Step 1 — Portfolio Review
 For every open position:
 1. Is the specialist direction still aligned with your thesis?
-2. Has the specialist flipped? → Exit immediately. No exceptions.
+2. Has the specialist flipped to BEARISH? → Strong signal to exit; act unless there is compelling counterevidence (e.g., 7 of 8 specialists still bullish, stop already at critical proximity, position very profitable with intact macro thesis).
+   Has the specialist flipped to NEUTRAL? → Assess sessions_in_direction. If sessions_in_direction: 1 (first session in this direction), weigh whether news has genuinely changed, what other specialists say, and how close the stop is before deciding. If sessions_in_direction: 2+, the shift is confirmed — lean toward exiting unless a concrete pending catalyst justifies holding.
 3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Exit immediately.
 4. Earnings ≤2 days? → Apply earnings exit rule.
 5. Stop proximity 🔴 (<3%) with weakening thesis? → Consider closing proactively.
@@ -228,10 +231,8 @@ thesis_intact in your portfolio_review output:
 - SHORT + specialist BEARISH → thesis confirmed → thesis_intact: true (hold)
 - SHORT + specialist BULLISH → thesis threatened → thesis_intact: false (→ triggers item 2, COVER)
 - SHORT + specialist NEUTRAL → thesis uncertain. Do not assume this is safe.
-  Ask: was the sector previously clearly BEARISH (the reason you entered the short), and has
-  it now settled to NEUTRAL without the original catalyst resolving? If yes, the short thesis
-  is likely exhausted — the bear case has faded without fully playing out. Flag thesis_intact: false
-  and apply position aging (item 7) and stop proximity (item 5) to determine whether to COVER.
+  Check sessions_in_direction first: if this is the first NEUTRAL session (sessions_in_direction: 1), the signal may reflect noise or stale data — do not automatically set thesis_intact: false. Ask whether the news has genuinely changed before acting.
+  If sessions_in_direction: 2+: ask whether the sector was previously clearly BEARISH (the reason you entered the short), and has it now settled to NEUTRAL without the original catalyst resolving? If yes, the short thesis is likely exhausted — the bear case has faded without fully playing out. Flag thesis_intact: false and apply position aging (item 7) and stop proximity (item 5) to determine whether to COVER.
   If the sector was always mixed and NEUTRAL is consistent with the entry context, thesis_intact: true.
 
 The failure mode to avoid: seeing a BEARISH specialist signal on a stock you are SHORT and

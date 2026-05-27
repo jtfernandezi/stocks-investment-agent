@@ -68,20 +68,22 @@ All JavaScript for Code nodes lives in `/workflows/code/`. Copy contents directl
 
 | File | Workflow | Node |
 |------|----------|------|
-| `01_set_session.js` | Main Analysis | [2] Set Session |
-| `02_compute_derived_metrics.js` | Main Analysis | [18] Compute Derived Metrics |
-| `03_prepare_rss_sources.js` | Main Analysis | [19] Prepare RSS Sources |
-| `04_build_specialist_inputs.js` | Main Analysis | [22] Build Specialist Inputs |
-| `05_parse_specialist_outputs.js` | Main Analysis | [24] Parse Specialist Outputs |
-| `06_build_orchestrator_input.js` | Main Analysis | [26] Build Orchestrator Input |
-| `07_parse_orchestrator_output.js` | Main Analysis | [28] Parse Orchestrator Output |
-| `08_prepare_trade_actions.js` | Main Analysis | [30a] Prepare Trade Actions |
-| `09_process_post_trade.js` | Main Analysis | [35] Process Post-Trade |
-| `watchdog_check.js` | Watchdog | [4] Check Signal Flip |
-| `post_mortem_build_input.js` | Post-Mortem | [3] Build Post-Mortem Input |
-| `post_mortem_store.js` | Post-Mortem | [5] Parse & Store Post-Mortem |
-| `letter_build_prompt.js` | Main Analysis | Build Letter Prompt (close sessions only) |
-| `letter_store.js` | Main Analysis | Parse & Store Letter |
+| `01_set_session.js` | Main Analysis v2 | Set Session |
+| `02_compute_derived_metrics.js` | Main Analysis v2 | Compute Derived Metrics |
+| `build_specialist_message.js` | Main Analysis v2 | Build [Niche] Message × 8 |
+| `parse_save_all_signals.js` | Main Analysis v2 | Parse & Save All Signals |
+| `06_build_orchestrator_input.js` | Main Analysis v2 | Build Orchestrator Input |
+| `07_parse_orchestrator_output.js` | Main Analysis v2 | Parse Orchestrator Output |
+| `08_prepare_trade_actions.js` | Main Analysis v2 | Prepare Trade Actions |
+| `09_process_post_trade.js` | Main Analysis v2 | Process Post-Trade |
+| `letter_build_prompt.js` | Main Analysis v2 | Build Letter Prompt (close sessions only) |
+| `letter_store.js` | Main Analysis v2 | Parse & Store Letter |
+| `watchdog_has_open_positions.js` | Watchdog | Has Open Positions? |
+| `watchdog_build_news_prompt.js` | Watchdog | Build News Prompt |
+| `watchdog_parse_flip.js` | Watchdog | Parse Flip Response |
+| `post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
+| `post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
+| `fundamentals_parse.js` | Fundamentals Refresh | Parse Fundamentals |
 
 Note: the "Attach Feed Niche" node [21] (Main Analysis) uses inline code — see its configuration in `main_analysis_blueprint.md`.
 

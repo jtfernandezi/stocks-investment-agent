@@ -598,7 +598,7 @@ ${formatTradeLessons(ctx.recentTradeLessons)}
 ### 4c. Correlation Flags (candidates with >0.70 correlation to open positions)
 ${Object.keys(ctx.correlationFlags).length > 0
   ? Object.entries(ctx.correlationFlags).map(([t, c]) =>
-      `  ${t}: correlated with ${c.map(x => `${x.open_position} (${x.correlation.toFixed(2)})`).join(', ')} — apply correlation penalty`
+      `  ${t}: correlated with ${c.map(x => `${x.open_position} (${Number(x.correlation).toFixed(2)})`).join(', ')} — apply correlation penalty`
     ).join('\n')
   : '  No correlation flags.'}
 

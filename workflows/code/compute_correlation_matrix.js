@@ -5,7 +5,6 @@
 
 const bars = $('Fetch Price Bars').first().json.bars || {};
 const LOOKBACK = 90;
-const MIN_CORR = 0.50;
 
 // Build 90-day daily return series per ticker
 const returns = {};
@@ -42,9 +41,7 @@ for (let i = 0; i < tickers.length; i++) {
   for (let j = i + 1; j < tickers.length; j++) {
     const a = tickers[i], b = tickers[j];
     const corr = pearson(returns[a], returns[b]);
-    if (Math.abs(corr) >= MIN_CORR) {
-      pairs.push([a, b, Math.round(corr * 10000) / 10000]);
-    }
+    pairs.push([a, b, Math.round(corr * 10000) / 10000]);
   }
 }
 

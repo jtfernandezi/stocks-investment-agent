@@ -50,7 +50,7 @@ for (let i = 0; i < tickers.length; i++) {
 
 if (pairs.length === 0) return [{ json: { pairs_upserted: 0, sql: 'SELECT 1' } }];
 
-const values = pairs.map(([a, b, c]) => `('${a}','${b}',${c})`).join(',\n');
+const values = pairs.map(([a, b, c]) => `('${a}','${b}',${c},NOW())`).join(',\n');
 const sql = `INSERT INTO stocks.correlation_matrix (ticker_a, ticker_b, correlation, calculated_at)\nVALUES\n${values}\nON CONFLICT (ticker_a, ticker_b) DO UPDATE SET\n  correlation = EXCLUDED.correlation,\n  calculated_at = NOW()`;
 
 return [{ json: { pairs_upserted: pairs.length, sql } }];

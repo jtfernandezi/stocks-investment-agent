@@ -1,10 +1,7 @@
 // Node: Compute Correlation Matrix
-// Parallel branch from Fetch Price Bars — morning sessions only.
+// Parallel branch from Fetch Price Bars — runs every session.
 // Computes 90-day Pearson correlations for all ticker pairs.
 // Outputs one item with bulk UPSERT SQL for pairs with |corr| >= 0.50.
-
-const sessionType = $('Set Session').first().json.session_type;
-if (sessionType !== 'morning') return [];
 
 const bars = $('Fetch Price Bars').first().json.bars || {};
 const LOOKBACK  = 90;

@@ -9,7 +9,7 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 | Workflow orchestration | n8n (Railway) |
 | Database | Neon PostgreSQL (`stocks` schema) |
 | Trade execution | Alpaca Paper Trading API |
-| Price data | Alpaca Data API (252 daily bars, 80 stocks + SPY) |
+| Price data | Alpaca Data API (~350 daily bars, 80 stocks + SPY, start=2025-01-01) |
 | Fundamentals | Finnhub API (8:30 AM ET daily via Fundamentals Refresh workflow, 60 req/min limit) |
 | News | RSS feeds (2 per niche, up to 15 articles/niche/session) |
 | Specialist LLMs | GPT-4o-mini |
@@ -129,7 +129,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 
 - **Shares calculation**: always recalculated from live price in `07_parse_orchestrator_output.js` — the LLM's share count is ignored (it uses stale prices)
 - **SQL injection**: all LLM-generated text goes through `sqlEsc = s => s.replace(/'/g, "''")` before string interpolation in every Postgres query
-- **Price bars**: fetched in 9 parallel HTTP nodes (one per niche + SPY), each 10 symbols × 252 bars. A `Merge Price Bars` Merge node (with `numberInputs: 9` and each HTTP node on a distinct port index 0–8) aggregates them before a Code node `Fetch Price Bars` merges all 9 responses into `{bars: {...}}`. Do NOT connect the 9 HTTP nodes directly to the Code node — each trigger fires the Code node separately, causing the entire pipeline to run 9 times.
+- **Price bars**: fetched in 9 parallel HTTP nodes (one per niche + SPY), each 10 symbols × up to ~350 bars (limit=3600 shared across all symbols in the request, start=2025-01-01). **Critical**: Alpaca's multi-symbol bars endpoint applies `limit` as a total across all symbols — it fills each ticker sequentially (alphabetically) until the limit is exhausted. With 10 symbols needing ~350 bars each = 3,500 bars total, `limit=3600` ensures all tickers get their full history. Previously `limit=252` meant only the alphabetically-first ticker per node got any bars. A `Merge Price Bars` Merge node (with `numberInputs: 9` and each HTTP node on a distinct port index 0–8) aggregates them before a Code node `Fetch Price Bars` merges all 9 responses into `{bars: {...}}`. Do NOT connect the 9 HTTP nodes directly to the Code node — each trigger fires the Code node separately, causing the entire pipeline to run 9 times.
 - **Merge nodes with multiple inputs**: must set `numberInputs: N` and wire each upstream node to a distinct port index 0..N-1. Without this, the Merge node fires after 2 items (default) instead of waiting for all N.
 - **Store All Signals node**: set `alwaysOutputData: true` — an `INSERT` without `RETURNING` returns 0 rows; n8n sees no output and stops execution. The SQL also uses `ON CONFLICT (niche, session) DO UPDATE SET ...` to upsert (overwrite stale signals on re-runs).
 - **specialist_signals table**: has a `UNIQUE (niche, session)` constraint. The upsert ensures exactly 1 canonical row per niche/session slot.
@@ -148,15 +148,15 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 
 | Node | Symbols | limit |
 |------|---------|-------|
-| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB | 252 |
-| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 252 |
-| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 252 |
-| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC | 252 |
-| Fetch Bars AI Semis | NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM | 252 |
-| Fetch Bars Cloud | MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM | 252 |
-| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 252 |
-| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 252 |
-| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR | 252 |
+| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB | 3600 |
+| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 3600 |
+| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 3600 |
+| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC | 3600 |
+| Fetch Bars AI Semis | NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM | 3600 |
+| Fetch Bars Cloud | MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM | 3600 |
+| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 3600 |
+| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 3600 |
+| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR | 3600 |
 | **Fetch Price Bars** (Code) | Merges all 9 → `{bars: {...}}` | — |
 
 ## Key Implementation Details — Execute Market Order

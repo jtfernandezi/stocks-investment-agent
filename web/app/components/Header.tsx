@@ -20,9 +20,9 @@ export default function Header() {
       .catch(() => {});
   }, []);
 
-  const spyStr   = !data || isNaN(data.spyCumPct)  ? '—' : `${data.spyCumPct  >= 0 ? '+' : ''}${data.spyCumPct.toFixed(2)}%`;
-  const alphaStr = !data || isNaN(data.alphaPct)   ? '—' : `${data.alphaPct   >= 0 ? '+' : ''}${data.alphaPct.toFixed(2)}%`;
-  const alphaUp  = !data || isNaN(data.alphaPct) || data.alphaPct >= 0;
+  const spyStr   = !data || data.spyCumPct == null || isNaN(data.spyCumPct)  ? '—' : `${data.spyCumPct  >= 0 ? '+' : ''}${data.spyCumPct.toFixed(2)}%`;
+  const alphaStr = !data || data.alphaPct  == null || isNaN(data.alphaPct)   ? '—' : `${data.alphaPct   >= 0 ? '+' : ''}${data.alphaPct.toFixed(2)}%`;
+  const alphaUp  = !data || data.alphaPct  == null || isNaN(data.alphaPct) || data.alphaPct >= 0;
 
   return (
     <header className="h-14 border-b border-rim bg-panel/60 px-6 flex items-center justify-between shrink-0">
@@ -46,7 +46,7 @@ export default function Header() {
           <div>
             <p className="text-xs text-dim">vs SPY</p>
             <p className={`font-mono text-sm font-medium ${alphaUp ? 'text-gain' : 'text-loss'}`}>
-              {alphaStr}{data && !isNaN(data.alphaPct) ? (data.alphaPct >= 0 ? ' above' : ' below') : ''}
+              {alphaStr}{data && data.alphaPct != null && !isNaN(data.alphaPct) ? (data.alphaPct >= 0 ? ' above' : ' below') : ''}
             </p>
           </div>
         </div>

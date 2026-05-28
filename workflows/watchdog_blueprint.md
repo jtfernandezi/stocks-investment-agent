@@ -1,11 +1,12 @@
 # Workflow 2 — Watchdog Blueprint (v2)
 
-Runs every 30 minutes, Monday–Friday, 10:00 AM–3:30 PM ET.
+Runs every 30 minutes at :10 and :40, Monday–Friday, 10:10 AM–3:40 PM ET.
 Single responsibility: detect thesis-changing news for open positions and trigger the orchestrator to decide whether to close.
 Trailing stop monitoring is handled entirely by Alpaca natively — this workflow does NOT check prices.
 
-**Why 10:00 AM start:** Main Analysis already fires at 9:30 AM open — the watchdog would be redundant at that time.
-**Why 3:30 PM end:** Main Analysis fires at 3:50 PM close — no watchdog run needed after that.
+**Why 10:10 AM start:** Main Analysis already fires at 9:30 AM open — the watchdog would be redundant at that time.
+**Why :10 and :40 (not :00 and :30):** Avoids simultaneous execution with the 12:00 PM midday Main Analysis session.
+**Why 3:40 PM end:** Main Analysis fires at 3:50 PM close — no watchdog run needed after that.
 
 ## Why v2 is different from v1
 
@@ -61,9 +62,9 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
 
 ### [1] Schedule Trigger
 - Mode: Cron
-- Expression: `0,30 14-20 * * 1-5` (UTC — wide enough to cover both EDT and EST; exact 10:00–15:30 ET window enforced by [2])
-- In EDT (UTC-4): fires 10:00 AM–4:30 PM ET — gate blocks anything after 3:30 PM
-- In EST (UTC-5): fires 9:00 AM–3:30 PM ET — gate blocks anything before 10:00 AM
+- Expression: `10,40 14-20 * * 1-5` (UTC — wide enough to cover both EDT and EST; exact 10:10–15:40 ET window enforced by [2])
+- In EDT (UTC-4): fires 10:10 AM–4:40 PM ET — gate blocks anything after 3:40 PM
+- In EST (UTC-5): fires 9:10 AM–3:40 PM ET — gate blocks anything before 10:10 AM
 
 ---
 

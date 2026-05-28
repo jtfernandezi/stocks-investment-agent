@@ -107,8 +107,8 @@ const NICHE_ETF = {
   defense:           'ITA',
   nuclear_uranium:   'URA',
   copper_minerals:   'COPX',
-  ai_semiconductors: 'SOXX',
-  cloud_hyperscalers:'SKYY',
+  semiconductors:    'SOXX',
+  enterprise_saas:   'SKYY',
   oil_gas:           'XLE',
   data_centers:      'DTCR',
 };
@@ -209,7 +209,7 @@ for (const [ticker, corrs] of Object.entries(corrMap)) {
 // ── SIGNAL HISTORY BY NICHE ───────────────────────────────────────────────────
 const NICHES = [
   'cybersecurity', 'defense', 'nuclear_uranium', 'copper_minerals',
-  'ai_semiconductors', 'cloud_hyperscalers', 'oil_gas', 'data_centers'
+  'semiconductors', 'enterprise_saas', 'oil_gas', 'data_centers'
 ];
 
 const signalsByNiche = {};

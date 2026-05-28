@@ -179,8 +179,9 @@ return [{
     session_type:            orchInput.session_type,
     orchestrator_session_type: orchestratorSessionType,
     account:      orchInput.portfolio_state.account,
-    spyCurrent:   orchInput.portfolio_state.spyCurrent,
+    spyCurrent:       orchInput.portfolio_state.spyCurrent,
     spyCumulativePct: orchInput.portfolio_state.spyCumulativePct,
+    prevSpyPrice:     orchInput.portfolio_state.prevSpyPrice,
 
     // Raw for debugging
     raw_orchestrator_response: (rawText || '').substring(0, 5000),

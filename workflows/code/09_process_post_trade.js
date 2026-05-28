@@ -43,7 +43,9 @@ const snapshotPayload = {
   short_value_usd:     shortValue,
   unrealized_pnl_usd:  unrealPnl,
   spy_price:           orch.spyCurrent || null,
-  spy_return_pct:      null,  // session return — compute later if needed
+  spy_return_pct:      (orch.spyCurrent && orch.prevSpyPrice && orch.prevSpyPrice > 0)
+    ? parseFloat(((orch.spyCurrent - orch.prevSpyPrice) / orch.prevSpyPrice * 100).toFixed(4))
+    : null,
   spy_cumulative_pct:  orch.spyCumulativePct || 0,
   orchestrator_summary: sqlEsc(orch.orchestrator_summary),
   positions_json:      sqlEsc(JSON.stringify(longReviews)),

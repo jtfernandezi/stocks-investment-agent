@@ -633,8 +633,9 @@ return [{
       priceMap:     ctx.priceMap,
       account:      ctx.account,
       session_id:   ctx.session_id,
-      spyCurrent:   ctx.spyCurrent,
+      spyCurrent:       ctx.spyCurrent,
       spyCumulativePct: ctx.spyCumulativePct,
+      prevSpyPrice:     ctx.prevSpyPrice,
     }
   }
 }];

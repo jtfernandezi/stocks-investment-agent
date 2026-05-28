@@ -281,6 +281,8 @@ const portfolioCumulativePct = firstSnap
   ? parseFloat(((portfolioValue - firstSnap.portfolio_value_usd) / firstSnap.portfolio_value_usd * 100).toFixed(2))
   : 0;
 const spyStartPrice = firstSnap ? firstSnap.spy_price : spyCurrent;
+const prevSnap = sortedSnaps[sortedSnaps.length - 1];
+const prevSpyPrice = prevSnap ? parseFloat(prevSnap.spy_price) : null;
 const spyCumulativePct = (spyStartPrice && spyCurrent)
   ? parseFloat(((spyCurrent - spyStartPrice) / spyStartPrice * 100).toFixed(2))
   : 0;
@@ -341,7 +343,7 @@ return [{
       long_market_value:  parseFloat(accountRaw.long_market_value),
       short_market_value: parseFloat(accountRaw.short_market_value),
       equity:             parseFloat(accountRaw.equity),
-      unrealized_pl:      parseFloat(accountRaw.unrealized_pl || 0),
+      unrealized_pl:      positions.reduce((sum, p) => sum + parseFloat(p.unrealized_pl || 0), 0),
     },
     positions: enrichedPositions,
     openOrders,
@@ -365,6 +367,7 @@ return [{
     portfolioCumulativePct,
     spyCumulativePct,
     spyCurrent,
+    prevSpyPrice,
     last7Snapshots,
 
     // Feedback system

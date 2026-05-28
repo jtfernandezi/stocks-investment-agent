@@ -16,7 +16,7 @@ export async function GET() {
         entry_pattern, exit_reason, key_lesson, pattern_tag,
         entry_specialist_confidence::float AS entry_specialist_confidence,
         entry_effective_confidence::float  AS entry_effective_confidence,
-        sector_accuracy, stock_selection_quality, entry_timing, exit_timing
+        sector_accuracy, entry_timing, exit_timing
       FROM stocks.trade_lessons
       ORDER BY exit_date DESC NULLS LAST, generated_at DESC
     `;

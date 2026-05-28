@@ -23,8 +23,7 @@ interface ClosedTrade {
   ticker: string; niche: string; direction: string; outcome: string;
   pnl_pct: number; pnl_usd: number; hold_days: number;
   entry_date: string; exit_date: string; exit_reason: string; key_lesson: string;
-  sector_accuracy: string; stock_selection_quality: string;
-  entry_timing: string; exit_timing: string;
+  sector_accuracy: string; entry_timing: string; exit_timing: string;
   entry_effective_confidence: number;
 }
 
@@ -47,7 +46,7 @@ interface TradeRow {
   status: 'Open' | 'Closed'; outcome?: string;
   entryPrice?: number; currentPrice?: number; thesis?: string; confidence?: number;
   exitReason?: string; keyLesson?: string;
-  sectorAccuracy?: string; stockQuality?: string; entryTiming?: string; exitTiming?: string;
+  sectorAccuracy?: string; entryTiming?: string; exitTiming?: string;
 }
 
 function qualityColor(q?: string) {
@@ -131,7 +130,6 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
                   <div className="space-y-2">
                     {[
                       { l: 'Sector Analysis', v: t.sectorAccuracy },
-                      { l: 'Stock Selection', v: t.stockQuality },
                       { l: 'Entry Timing',    v: t.entryTiming },
                       { l: 'Exit Timing',     v: t.exitTiming },
                     ].map(({ l, v }) => (
@@ -372,7 +370,6 @@ export default function PerformancePage() {
       exitReason:  t.exit_reason,
       keyLesson:   t.key_lesson,
       sectorAccuracy: t.sector_accuracy,
-      stockQuality:   t.stock_selection_quality,
       entryTiming:    t.entry_timing,
       exitTiming:     t.exit_timing,
       confidence:  t.entry_effective_confidence,

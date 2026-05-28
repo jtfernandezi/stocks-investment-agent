@@ -153,8 +153,8 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 | Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 3600 |
 | Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 3600 |
 | Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC | 3600 |
-| Fetch Bars AI Semis | NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM | 3600 |
-| Fetch Bars Cloud | MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM | 3600 |
+| Fetch Bars AI Semis | ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS | 3600 |
+| Fetch Bars Cloud | ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB | 3600 |
 | Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 3600 |
 | Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 3600 |
 | Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR | 3600 |
@@ -187,9 +187,17 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Post-mortem confirmed live** — First real orchestrator-initiated SELL/COVER post-mortem ran successfully for ZS on 2026-05-27 (execution 353). Full chain verified: Workflow Trigger → Load Signals → ETF Bars → Build Input → LLM → Parse → Insert Trade Lesson → Update Specialist Accuracy → Update Pattern Performance ✓
 - **Correlation matrix populated automatically** — `correlation_matrix` table was always empty (no workflow wrote to it). Added `Compute Correlation Matrix` Code node (90-day Pearson, all pairs stored, every session) + `Store Correlation Matrix` Postgres node as a parallel branch from `Fetch Price Bars` in Main Analysis v2. Stores all ~3,700 ticker pairs (no threshold filter) so the portfolio heatmap shows real correlation values for every position pair. Orchestrator's 0.70 penalty threshold is applied in the prompt, not at the storage layer.
 
+## Enhancements (2026-05-28)
+
+- **Niche rename + stock swap** — Two niches renamed with entirely new stock lists focused on more liquid swing-trading candidates (selected by dollar volume analysis):
+  - `ai_semiconductors` → `semiconductors` (Display: "Semiconductors & EDA"): NVDA/AMD/AVGO/QCOM/MRVL/MU removed; replaced with ARM, AMAT, LRCX, KLAC, ON, TER, NXPI, MCHP, MPWR, SNPS (EDA tools + analog/power semis).
+  - `cloud_hyperscalers` → `enterprise_saas` (Display: "Enterprise SaaS"): MSFT/AMZN/GOOGL/META/MU removed; replaced with ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB (pure-play SaaS with clearer catalysts).
+  - Updated everywhere: `08_prepare_trade_actions.js` TICKER_NICHE, `02_compute_derived_metrics.js` NICHE_ETF + NICHES array, `fundamentals_parse_earnings.js` TICKERS set, `web/lib/constants.ts` TICKER_NICHE + NICHE_DISPLAY + ALL_NICHES, n8n Build Message nodes (NICHE/NICHE_DISPLAY/TICKERS), n8n Fetch Bars URLs, n8n Fundamentals Refresh Prepare Tickers, n8n RSS AI & Semiconductors 2 (arstechnica → semiengineering.com).
+- **Alpaca credentials rotated** — New paper trading account (key: <ALPACA_API_KEY_ID>). Updated in all n8n HTTP nodes (Alpaca Trading + Alpaca Data credentials) and Vercel environment variables. DB reset to fresh $60k start.
+
 ## Known Open Issues
 
-None. All previously tracked issues resolved as of 2026-05-27.
+None. All previously tracked issues resolved as of 2026-05-28.
 
 ## position_metadata notes
 
@@ -250,8 +258,8 @@ All four workflows activated and running autonomously.
 | `defense` | Defense | LMT, RTX, NOC, GD, HII, LHX, KTOS, RCAT, PLTR, AXON |
 | `nuclear_uranium` | Nuclear / Uranium | CCJ, UEC, NXE, DNN, SMR, OKLO, CEG, VST, ETR, NEE |
 | `copper_minerals` | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, LTHM, ALB, SQM, LAC |
-| `ai_semiconductors` | AI & Semiconductors | NVDA, AMD, AVGO, QCOM, MRVL, AMAT, KLAC, LRCX, MU, ARM |
-| `cloud_hyperscalers` | Cloud Hyperscalers | MSFT, AMZN, GOOGL, META, ORCL, SNOW, MDB, DDOG, NET, CRM |
+| `semiconductors` | Semiconductors & EDA | ARM, AMAT, LRCX, KLAC, ON, TER, NXPI, MCHP, MPWR, SNPS |
+| `enterprise_saas` | Enterprise SaaS | ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB |
 | `oil_gas` | Oil & Gas | XOM, CVX, COP, SLB, HAL, MPC, PSX, VLO, OXY, EOG |
 | `data_centers` | Data Centers & AI Infrastructure | EQIX, DLR, AMT, IREN, CORZ, VRT, SMCI, DELL, HPE, WDC |
 
@@ -290,4 +298,4 @@ Auto-improves without code changes after each closed trade:
 
 ## Sector ETFs (used in post-mortem attribution)
 
-`cybersecurity → HACK` | `defense → ITA` | `nuclear_uranium → URA` | `copper_minerals → COPX` | `ai_semiconductors → SOXX` | `cloud_hyperscalers → SKYY` | `oil_gas → XLE` | `data_centers → DTCR`
+`cybersecurity → HACK` | `defense → ITA` | `nuclear_uranium → URA` | `copper_minerals → COPX` | `semiconductors → SOXX` | `enterprise_saas → SKYY` | `oil_gas → XLE` | `data_centers → DTCR`

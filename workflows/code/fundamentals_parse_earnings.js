@@ -7,8 +7,8 @@ const TICKERS = new Set([
   'LMT','RTX','NOC','GD','HII','LHX','KTOS','RCAT','PLTR','AXON',
   'CCJ','UEC','NXE','DNN','SMR','OKLO','CEG','VST','ETR','NEE',
   'FCX','SCCO','TECK','HBM','VALE','MP','LTHM','ALB','SQM','LAC',
-  'NVDA','AMD','AVGO','QCOM','MRVL','AMAT','KLAC','LRCX','MU','ARM',
-  'MSFT','AMZN','GOOGL','META','ORCL','SNOW','MDB','DDOG','NET','CRM',
+  'ARM','AMAT','LRCX','KLAC','ON','TER','NXPI','MCHP','MPWR','SNPS',
+  'ORCL','NOW','CRM','DDOG','SNOW','ADBE','NET','TEAM','WDAY','MDB',
   'XOM','CVX','COP','SLB','HAL','MPC','PSX','VLO','OXY','EOG',
   'EQIX','DLR','AMT','IREN','CORZ','VRT','SMCI','DELL','HPE','WDC',
 ]);

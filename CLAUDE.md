@@ -296,6 +296,19 @@ Auto-improves without code changes after each closed trade:
 3. **Trade lessons injection**: last 5 post-mortem lessons injected into orchestrator each session
 4. **Counterfactual tracking**: alternative picks tracked for same hold period to validate stock selection
 
+## RSS Feeds (2 per niche — verified working 2026-05-28)
+
+| Niche | RSS 1 | RSS 2 |
+|-------|-------|-------|
+| `cybersecurity` | https://www.darkreading.com/rss.xml | https://feeds.feedburner.com/TheHackersNews |
+| `defense` | https://www.airandspaceforces.com/feed/ | https://breakingdefense.com/feed/ |
+| `nuclear_uranium` | https://world-nuclear-news.org/rss | https://www.powermag.com/category/nuclear/feed/ |
+| `copper_minerals` | https://www.mining.com/feed/ | https://www.northernminer.com/feed/ |
+| `semiconductors` | https://semianalysis.com/feed/ | https://semiengineering.com/feed/ |
+| `enterprise_saas` | https://diginomica.com/feed | https://siliconangle.com/feed/ |
+| `oil_gas` | https://oilprice.com/rss/main | https://www.naturalgasintel.com/feed/ |
+| `data_centers` | https://www.datacenterdynamics.com/en/rss/ | https://www.datacenterknowledge.com/rss.xml |
+
 ## Sector ETFs (used in post-mortem attribution)
 
 `cybersecurity → HACK` | `defense → ITA` | `nuclear_uranium → URA` | `copper_minerals → COPX` | `semiconductors → SOXX` | `enterprise_saas → SKYY` | `oil_gas → XLE` | `data_centers → DTCR`

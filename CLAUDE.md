@@ -21,8 +21,8 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 **Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) → [closed: stop | open: Set Session] → 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → Parse Orchestrator Output → three parallel branches: (1) Process Post-Trade (snapshot + post-mortem), (2) Build Orchestrator Session SQL → Store Orchestrator Summary, (3) Has Trade Actions? → [no trades: No Trades — End | trades: Prepare Trade Actions → trade execution]. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session` (bypasses the market open gate — watchdog already verifies market hours). All 16 RSS nodes have `continueRegularOutput` error handling — a single failed feed does not stop the workflow.
 
-**Watchdog** — every 30 min, 10:00 AM–3:30 PM ET (starts at 10, not 9:30 — Main Analysis already covers the open; last run at 3:30 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → single LLM call assesses each position → detects thesis flips → triggers Main Analysis v2 via Execute Workflow ("When Called by Watchdog" entry point). Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
+**Watchdog** — every 30 min at :10 and :40, 10:10 AM–3:40 PM ET (starts at 10:10, not 9:30 — Main Analysis already covers the open; runs at :10/:40 to avoid the 12:00 PM midday Main Analysis; last run at 3:40 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → Has Open Positions? → IF Has Positions? → three parallel branches: (1) Split Tickers → Fetch Alpaca News → Build News Prompt → Call Watchdog LLM → Parse Flip Response → IF Flips Detected? → [no flips: Done | flips: Trigger Main Analysis], (2) Load Position Metadata (Watchdog) [thesis/niche, read by Build News Prompt via $()], (3) Fetch Alpaca Open Orders (Watchdog) [trailing stop proximity, read by Build News Prompt via $()]. Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Fundamentals Refresh** — daily 8:30 AM ET Mon–Fri — workflow ID: `8hHaG6U0ToaHRAei`
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: two parallel branches]: (1) Prepare Tickers → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop; (2) Fetch Earnings Calendar (Finnhub `/calendar/earnings?from=today&to=today+30d`) → Parse Earnings → Store Earnings Calendar. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, analyst consensus, and upcoming earnings dates. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 80 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
@@ -194,6 +194,16 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
   - `cloud_hyperscalers` → `enterprise_saas` (Display: "Enterprise SaaS"): MSFT/AMZN/GOOGL/META/MU removed; replaced with ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB (pure-play SaaS with clearer catalysts).
   - Updated everywhere: `08_prepare_trade_actions.js` TICKER_NICHE, `02_compute_derived_metrics.js` NICHE_ETF + NICHES array, `fundamentals_parse_earnings.js` TICKERS set, `web/lib/constants.ts` TICKER_NICHE + NICHE_DISPLAY + ALL_NICHES, n8n Build Message nodes (NICHE/NICHE_DISPLAY/TICKERS), n8n Fetch Bars URLs, n8n Fundamentals Refresh Prepare Tickers, n8n RSS AI & Semiconductors 2 (arstechnica → semiengineering.com).
 - **Alpaca credentials rotated** — New paper trading account (key: <ALPACA_API_KEY_ID>). Updated in all n8n HTTP nodes (Alpaca Trading + Alpaca Data credentials) and Vercel environment variables. DB reset to fresh $60k start.
+- **Fundamentals Refresh market gate fix** — `Is Market Open?` condition changed from `isOpen` to `holiday === null`. The workflow runs at 8:30 AM ET before the market opens, so `isOpen` is always false at that time — it was silently skipping every day. Now gates correctly on whether it's a trading day (not a holiday), regardless of session state.
+- **Watchdog connection fix** — `Load Position Metadata (Watchdog)` and `Fetch Alpaca Open Orders (Watchdog)` were incorrectly placed in series before `Split Tickers`. An empty orders response (no trailing stops) would produce 0 items and block the entire downstream LLM chain. Both nodes now run as parallel branches from `IF Has Positions?`, matching the original working flow where `Split Tickers` is triggered directly.
+- **Watchdog schedule shifted** — Cron changed from `0,30 10-15` to `10,40 10-15`. Runs at :10 and :40 past each hour (10:10 AM–3:40 PM ET) to avoid simultaneous execution with the 12:00 PM midday Main Analysis session.
+- **Trailing stop race condition fix** — `Submit Trailing Stop` was firing immediately after `Execute Market Order`, before Alpaca had filled the market buy orders. Alpaca rejected all trailing stop (sell) orders with "cannot open a short sell while a long buy order is open." Added `Wait For Fill` (5s) node between `Restore Trade Context` and `Needs Trailing Stop?`.
+
+## Enhancements (2026-05-28 — session 2)
+
+- **Watchdog `No Contradictions - Done` NoOp** — Added a named terminal node to the FALSE branch of `IF Contradictions?`. Previously the FALSE branch silently stopped with no visible node in the canvas. Now matches the pattern of all other terminal branches (`Market Closed - Done`, `No Positions - Done`, `No Flips - Done`).
+- **Watchdog blueprint + README schedule corrected** — `watchdog_blueprint.md` and `README.md` still documented the old `:00`/`:30` schedule. Updated to match the live cron (`10,40 10-15`) — 10:10 AM–3:40 PM ET at :10 and :40 — including the rationale for the :10/:40 offset.
+- **Investor letter prompt rewrite** — `letter_build_prompt.js` overhauled. Previous prompt fed the LLM a raw data dump (entry prices, effective confidence scores, specialist signal tables) leading to mechanical letters. New prompt: practitioner-style LP letter (Howard Marks / Seth Klarman tone), thesis-first prose, no internal jargon. User prompt now includes: positions with entry thesis + days held, trades in plain English, sector rotation outlook, watchlist with trigger conditions, and earnings at-risk. Specialist signal tables and confidence scores removed from letter context entirely.
 
 ## Known Open Issues
 
@@ -213,12 +223,12 @@ None. All previously tracked issues resolved as of 2026-05-28.
 |------|----------|--------|
 | 8:30 AM | Fundamentals Refresh | Fetch P/E, margins, analyst consensus for all 80 stocks |
 | 9:30 AM | Main Analysis v2 | Morning session — full specialist + orchestrator run |
-| 10:00 AM–3:30 PM | Watchdog | Every 30 min — thesis flip detection on open positions |
+| 10:10 AM–3:40 PM | Watchdog | Every 30 min (:10 and :40) — thesis flip detection on open positions |
 | 12:00 PM | Main Analysis v2 | Midday session |
 | 3:50 PM | Main Analysis v2 | Close session (+ investor letter generation) |
 | On demand | Post-Mortem | Triggered after every SELL/COVER |
 
-All scheduled workflows gate on Finnhub `isOpen` at startup — exits cleanly on holidays without running any downstream nodes.
+Main Analysis v2 and Watchdog gate on Finnhub `isOpen` at startup — exits cleanly on holidays and outside market hours. Fundamentals Refresh gates on `holiday === null` instead (since it runs at 8:30 AM before the market opens, `isOpen` would always be false).
 
 ## Specialist Data Enhancements (2026-05-25)
 
@@ -234,11 +244,11 @@ Four new data points added to every specialist's per-stock input block:
 
 ## Watchdog Enhancements (2026-05-25)
 
-- **Investment thesis passed to watchdog** — `watchdog_has_open_positions.js` now includes `niche` per position. A new `Load Position Metadata (Watchdog)` Postgres node reads thesis + niche from `position_metadata` into `watchdog_build_news_prompt.js` via `metaMap`.
+- **Investment thesis passed to watchdog** — `watchdog_has_open_positions.js` now includes `niche` per position. A new `Load Position Metadata (Watchdog)` Postgres node reads thesis + niche from `position_metadata` into `watchdog_build_news_prompt.js` via `metaMap`. Runs as a parallel branch from `IF Has Positions?` (not in the main `Split Tickers` trigger chain).
 - **Short inversion logic** — Full worked examples and failure modes added to the watchdog system prompt: BEARISH news on a SHORT confirms the thesis; BULLISH news threatens it.
 - **`news_assessment` field** — Watchdog LLM now outputs `news_assessment: CONFIRMS | THREATENS | NEUTRAL` alongside `direction: BULLISH | BEARISH | NEUTRAL`. These must be internally consistent.
 - **Contradiction detection** — `watchdog_parse_flip.js` detects `thesis_intact: false + news_assessment: CONFIRMS` (logical impossibility), suppresses it from flip triggering, stores it in `stocks.watchdog_events`, and sends a Gmail alert.
-- **Stop proximity** — `Fetch Alpaca Open Orders (Watchdog)` node feeds trailing stop distances into the watchdog prompt. CRITICAL (<3% away) lowers the flip confidence threshold from 0.60 to 0.50.
+- **Stop proximity** — `Fetch Alpaca Open Orders (Watchdog)` node feeds trailing stop distances into the watchdog prompt. CRITICAL (<3% away) lowers the flip confidence threshold from 0.60 to 0.50. Runs as a parallel branch from `IF Has Positions?` (not in the main `Split Tickers` trigger chain — empty orders would have blocked execution if left in series).
 
 ## Live Test Results (2026-05-22)
 

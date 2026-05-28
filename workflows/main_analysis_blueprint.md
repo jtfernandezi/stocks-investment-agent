@@ -529,7 +529,8 @@ return payloads.map(p => ({json: p}));
 ### [27d] Build Letter Prompt
 - Node type: Code (`letter_build_prompt.js`)
 - Reads from `Parse Orchestrator Output`, `Build Orchestrator Input`, `Compute Derived Metrics`
-- Assembles a full system + user prompt with: portfolio metrics, open positions (with P&L), trades executed, all 8 specialist signals, and the orchestrator's session notes
+- Assembles system + user prompt for a practitioner-style LP letter covering: day result, key trade decisions (thesis-first), current book with entry thesis + days held, sector rotation outlook, watchlist with triggers, earnings at-risk, and forward posture
+- No internal jargon in the prompt (no "effective confidence", "orchestrator", "signal patterns") — written as the portfolio manager's own views
 - Output: `{ system_prompt, user_prompt, session_id }`
 
 ### [27e] Letter LLM

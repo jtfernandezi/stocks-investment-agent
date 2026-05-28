@@ -64,8 +64,8 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 | 2 | Defense | LMT, RTX, NOC, GD, HII, LHX, KTOS, RCAT, PLTR, AXON |
 | 3 | Nuclear / Uranium | CCJ, UEC, NXE, DNN, SMR, OKLO, CEG, VST, ETR, NEE |
 | 4 | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, LTHM, ALB, SQM, LAC |
-| 5 | AI & Semiconductors | NVDA, AMD, AVGO, QCOM, MRVL, AMAT, KLAC, LRCX, MU, ARM |
-| 6 | Cloud Hyperscalers | MSFT, AMZN, GOOGL, META, ORCL, SNOW, MDB, DDOG, NET, CRM |
+| 5 | Semiconductors & EDA | ARM, AMAT, LRCX, KLAC, ON, TER, NXPI, MCHP, MPWR, SNPS |
+| 6 | Enterprise SaaS | ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB |
 | 7 | Oil & Gas | XOM, CVX, COP, SLB, HAL, MPC, PSX, VLO, OXY, EOG |
 | 8 | Data Centers & AI Infrastructure | EQIX, DLR, AMT, IREN, CORZ, VRT, SMCI, DELL, HPE, WDC |
 

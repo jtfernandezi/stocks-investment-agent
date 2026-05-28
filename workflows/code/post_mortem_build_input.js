@@ -60,8 +60,8 @@ const SECTOR_ETF = {
   defense:           'ITA',
   nuclear_uranium:   'URA',
   copper_minerals:   'COPX',
-  ai_semiconductors: 'SOXX',
-  cloud_hyperscalers:'SKYY',
+  semiconductors:    'SOXX',
+  enterprise_saas:   'SKYY',
   oil_gas:           'XLE',
   data_centers:      'DTCR',
 };

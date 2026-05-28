@@ -485,7 +485,7 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
   ],
   "portfolio_review": [
     {
-      "ticker": "NVDA",
+      "ticker": "CRWD",
       "current_action": "HOLD" | "SELL" | "COVER",
       "thesis_intact": true | false,
       "earnings_risk": "NONE" | "MEDIUM" | "HIGH",
@@ -496,7 +496,7 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
   ],
   "watchlist": [
     {
-      "ticker": "AMD",
+      "ticker": "AMAT",
       "niche": "semiconductors",
       "direction": "long" | "short",
       "reason": "Why watching",
@@ -505,7 +505,7 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
   ],
   "rejected_candidates": [
     {
-      "ticker": "AMD",
+      "ticker": "AMAT",
       "action": "BUY" | "SHORT",
       "rejection_reason": "Why this candidate was not traded",
       "blocking_rule": "pattern_ev_negative" | "noise_penalty_exceeded" | "sector_cap" | "short_cap" | "position_cap" | "below_confidence_threshold" | "earnings_risk" | "correlation_penalty_exceeded" | "insufficient_cash"
@@ -514,7 +514,7 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
   "risk_summary": {
     "net_exposure_pct": "+45%",
     "gross_exposure_usd": "$42000",
-    "largest_correlation_cluster": "NVDA/MSFT/NET (AI/cloud) or none",
+    "largest_correlation_cluster": "CRWD/PANW/ZS (cybersecurity) or none",
     "regime_assessment": "BULLISH trend / normal volatility",
     "short_book_status": "1 position / $3k (25% of $12k cap)"
   },

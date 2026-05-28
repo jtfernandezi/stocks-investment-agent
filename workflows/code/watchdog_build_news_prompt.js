@@ -93,7 +93,7 @@ const SYSTEM_PROMPT = `You are a real-time news monitor for an AI-driven investm
 - Analyst price target adjustments (routine sell-side noise)
 - General market commentary or macro outlook pieces
 - Minor product announcements or conference participation
-- Stock movement articles ("NVDA up 3% today") — price action alone is not a thesis change
+- Stock movement articles ("CRWD up 3% today") — price action alone is not a thesis change
 - Repetitive earnings call headline fragments (already priced in)
 
 ## POSITION DIRECTION — CRITICAL: THE SHORT INVERSION
@@ -261,7 +261,7 @@ Respond ONLY with valid JSON. No markdown, no backticks.
 {
   "position_assessments": [
     {
-      "ticker": "NVDA",
+      "ticker": "CRWD",
       "side": "LONG",
       "thesis_intact": true,
       "direction": "BULLISH | BEARISH | NEUTRAL",

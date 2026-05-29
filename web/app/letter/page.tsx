@@ -157,7 +157,7 @@ export default function LetterPage() {
               {loading ? (
                 <p className="text-sm text-dim">Loading…</p>
               ) : (
-                <div className="space-y-5 max-w-2xl">
+                <div className="space-y-5">
                   {paragraphs.map((para, i) => (
                     <p key={i} className={`text-sm leading-relaxed whitespace-pre-line ${
                       i === 0 ? 'text-ink font-medium' : 'text-dim'

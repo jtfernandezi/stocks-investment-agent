@@ -5,6 +5,7 @@ import StatCard from './components/StatCard';
 import MarketClock from './components/MarketClock';
 import MiniEquityChart from './components/MiniEquityChart';
 import SectorPnLWidget from './components/SectorPnLWidget';
+import SignalSummaryWidget from './components/SignalSummaryWidget';
 import { alpacaFetch } from '@/lib/alpaca';
 import { sql } from '@/lib/db';
 import { TICKER_NICHE, NICHE_DISPLAY, ALL_NICHES, START_CAPITAL } from '@/lib/constants';
@@ -17,7 +18,7 @@ async function safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
 }
 
 export default async function Dashboard() {
-  const [account, positions, snapshots] = await Promise.all([
+  const [account, positions, snapshots, latestSignals] = await Promise.all([
     safe(() => alpacaFetch<AlpacaAccount>('/account'), null),
     safe(() => alpacaFetch<AlpacaPos[]>('/positions'), [] as AlpacaPos[]),
     safe(() => sql`
@@ -28,6 +29,12 @@ export default async function Dashboard() {
         spy_cumulative_pct
       FROM stocks.portfolio_snapshots
       ORDER BY DATE(created_at AT TIME ZONE 'America/New_York') ASC, created_at DESC
+    `, [] as Record<string, unknown>[]),
+    safe(() => sql`
+      SELECT DISTINCT ON (niche)
+        niche, direction, conviction, confidence, session
+      FROM stocks.specialist_signals
+      ORDER BY niche, created_at DESC
     `, [] as Record<string, unknown>[]),
   ]);
 
@@ -77,6 +84,15 @@ export default async function Dashboard() {
     niche:  NICHE_DISPLAY[n],
     pnlUsd: sectorMap[n] ? sectorMap[n].pnlUsd    : null,
     pnlPct: sectorMap[n] ? sectorMap[n].pnlUsd / sectorMap[n].costBasis * 100 : null,
+  }));
+
+  // ── Latest specialist signals ─────────────────────────────────
+  const signalRows = latestSignals.map(r => ({
+    niche:      String(r.niche),
+    direction:  String(r.direction ?? 'NEUTRAL'),
+    conviction: String(r.conviction ?? '—'),
+    confidence: parseFloat(String(r.confidence ?? '0')),
+    session:    String(r.session ?? ''),
   }));
 
   // ── Top positions (largest by market value) ───────────────────
@@ -153,48 +169,52 @@ export default async function Dashboard() {
             />
           </div>
 
-          {/* Charts row */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Row 1: Equity Curve | Top Positions */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             <MiniEquityChart data={equityData} startCapital={START_CAPITAL} />
-            <SectorPnLWidget sectors={sectorData} />
+
+            <div className="bg-panel border border-rim rounded-xl overflow-hidden">
+              <div className="px-5 py-4 border-b border-rim flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-ink">Top Positions</h2>
+                <Link href="/portfolio" className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors">
+                  View all {openCount} <ArrowRight size={12} />
+                </Link>
+              </div>
+              {topPositions.length === 0 ? (
+                <div className="px-5 py-8 text-xs text-dim text-center">No open positions</div>
+              ) : (
+                <div className="divide-y divide-rim/40">
+                  {topPositions.map(p => {
+                    const up = p.pnlPct >= 0;
+                    return (
+                      <div key={p.ticker} className="px-4 md:px-5 py-3.5 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <span className="font-semibold text-ink text-sm">{p.ticker}</span>
+                          <span className="text-xs text-dim ml-2 hidden sm:inline truncate">{p.niche}</span>
+                        </div>
+                        <div className="flex items-center gap-2 md:gap-4 shrink-0">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
+                            {p.side}
+                          </span>
+                          <span className={`font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+                            {up ? '+' : ''}{p.pnlPct.toFixed(2)}%
+                          </span>
+                          <span className="font-mono text-xs text-dim hidden sm:inline">
+                            ${p.marketVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Positions preview */}
-          <div className="bg-panel border border-rim rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-rim flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-ink">Top Positions</h2>
-              <Link href="/portfolio" className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors">
-                View all {openCount} <ArrowRight size={12} />
-              </Link>
-            </div>
-            {topPositions.length === 0 ? (
-              <div className="px-5 py-8 text-xs text-dim text-center">No open positions</div>
-            ) : (
-              <div className="divide-y divide-rim/40">
-                {topPositions.map(p => {
-                  const up = p.pnlPct >= 0;
-                  return (
-                    <div key={p.ticker} className="px-4 md:px-5 py-3.5 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="font-semibold text-ink text-sm">{p.ticker}</span>
-                        <span className="text-xs text-dim ml-2 hidden sm:inline truncate">{p.niche}</span>
-                      </div>
-                      <div className="flex items-center gap-2 md:gap-4 shrink-0">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
-                          {p.side}
-                        </span>
-                        <span className={`font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
-                          {up ? '+' : ''}{p.pnlPct.toFixed(2)}%
-                        </span>
-                        <span className="font-mono text-xs text-dim hidden sm:inline">
-                          ${p.marketVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          {/* Row 2: Specialist Signals | Sector Performance */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+            <SignalSummaryWidget signals={signalRows} />
+            <SectorPnLWidget sectors={sectorData} />
           </div>
     </PageShell>
   );

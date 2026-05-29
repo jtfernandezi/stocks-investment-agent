@@ -69,7 +69,7 @@ export default function CorrelationHeatmap({
       </div>
 
       <div className="overflow-x-auto">
-        <div style={{ display: 'grid', gridTemplateColumns: `7rem repeat(${n}, 1fr)`, gap: 3 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `5rem repeat(${n}, 1fr)`, gap: 3 }}>
 
           {/* Top-left corner spacer */}
           <div />
@@ -92,7 +92,7 @@ export default function CorrelationHeatmap({
           {matrix.map((row, i) => (
             <React.Fragment key={i}>
               {/* Row label */}
-              <div className="flex items-center justify-end pr-3">
+              <div className="flex items-center justify-end pr-2">
                 <span className={`text-xs font-mono font-medium ${tickers[i].side === 'L' ? 'text-gain' : 'text-loss'}`}>
                   {tickers[i].ticker}
                 </span>

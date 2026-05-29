@@ -214,35 +214,20 @@ function ExpandableRow({ p }: { p: Position }) {
       {open && (
         <tr className="border-b border-rim/40 bg-surface/60">
           <td colSpan={17} className="px-8 py-5">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-2">
-                <p className="text-xs text-dim uppercase tracking-wider font-medium">Orchestrator Entry Reasoning</p>
-                {p.thesis
-                  ? <p className="text-sm text-ink leading-relaxed">{p.thesis}</p>
-                  : <p className="text-xs text-dim italic">No entry reasoning recorded for this position.</p>}
-                <div className="flex items-center gap-2 mt-3">
-                  {thesisValid
-                    ? <span className="flex items-center gap-1.5 text-xs text-gain"><ShieldCheck size={12} /> Thesis intact as of last session</span>
-                    : <span className="flex items-center gap-1.5 text-xs text-yellow-400"><AlertTriangle size={12} /> Thesis weakening — under review</span>}
-                </div>
-              </div>
-              <div className="space-y-3">
-                <p className="text-xs text-dim uppercase tracking-wider font-medium">Position Details</p>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {[
-                    { l: 'Stop %',      v: p.stopPct  != null ? `${p.stopPct.toFixed(1)}%`  : '—' },
-                    { l: 'Stop Price',  v: p.stopPrice != null ? usd(p.stopPrice)            : '—' },
-                    { l: 'Conviction',  v: p.conviction ?? '—' },
-                    { l: 'Conf Score',  v: p.effectiveConfidence != null ? p.effectiveConfidence.toFixed(2) : '—' },
-                    { l: 'Today Δ',     v: `${p.changeToday >= 0 ? '+' : ''}${p.changeToday.toFixed(2)}%` },
-                    { l: 'Market Val',  v: usd(p.marketValue) },
-                  ].map(({ l, v }) => (
-                    <div key={l} className="bg-panel rounded-lg p-2">
-                      <div className="text-dim">{l}</div>
-                      <div className="text-ink font-mono font-medium">{v}</div>
-                    </div>
-                  ))}
-                </div>
+            <div className="space-y-3">
+              <p className="text-xs text-dim uppercase tracking-wider font-medium">Orchestrator Entry Reasoning</p>
+              {p.thesis
+                ? <p className="text-xs text-ink leading-relaxed">{p.thesis}</p>
+                : <p className="text-xs text-dim italic">No entry reasoning recorded for this position.</p>}
+              <div className="flex items-center gap-4 pt-1">
+                {thesisValid
+                  ? <span className="flex items-center gap-1.5 text-xs text-gain"><ShieldCheck size={12} /> Thesis intact as of last session</span>
+                  : <span className="flex items-center gap-1.5 text-xs text-yellow-400"><AlertTriangle size={12} /> Thesis weakening — under review</span>}
+                {p.conviction && (
+                  <span className="text-xs text-dim">
+                    Conviction: <span className="text-ink font-medium">{p.conviction}</span>
+                  </span>
+                )}
               </div>
             </div>
           </td>

@@ -215,6 +215,30 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Dashboard — "Invested" stat card added** — New card inserted between "Available Cash" and "Open Positions" showing gross invested capital (`long_market_value + |short_market_value|`) with subtext "long + short exposure". No new API call — both values already fetched from `/api/account`.
 - **Dashboard — home page stat row expanded to 7 cards** — Grid updated from `xl:grid-cols-6` to `xl:grid-cols-7` so all 7 cards fit in one row on desktop (≥1280px). `lg` breakpoint updated to `grid-cols-4` for cleaner 4/3 wrapping on medium screens.
 
+## Enhancements (2026-05-28 — session 4)
+
+- **Full mobile responsive pass** — Complete overhaul of all 6 pages for mobile (375px+). Key architectural changes:
+  - `BottomNav` component — fixed bottom tab bar (Home / Portfolio / Research / Perf / Agent / Letter), visible below `md` breakpoint. Sidebar hidden on mobile (`hidden md:flex`).
+  - `PageShell` — mounts `BottomNav`, reduces padding to `p-4` on mobile, adds `pb-24` clearance for bottom nav bar.
+  - `Header` — compact on mobile (next session + vs SPY only), full info on desktop.
+  - `MarketClock` — `flex-wrap` so status / sublabel / next session stack on narrow screens.
+  - `StatCard` — `text-base / p-3` on mobile, `text-xl / p-4` on desktop.
+  - `globals.css` — `overflow-x: hidden` on body to prevent rogue horizontal scroll.
+  - `SectorPnLWidget` — sector label `w-44` → `w-24 md:w-44`.
+  - `SectorTreemap` — wrapped in `overflow-x-auto` with `min-w-[480px]` so blocks stay legible instead of squashing.
+  - `MonthlyReturnsGrid` — tighter cell padding and `text-xs` for data cells.
+  - `CorrelationHeatmap` — row label column `7rem` → `5rem`, `pr-3` → `pr-2`.
+- **Dashboard (page.tsx) refactored** — now uses `PageShell`; stat grid `grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7`; hero `text-3xl` on mobile.
+- **Portfolio mobile card view** — `MobilePositionCard` component renders instead of the 15-column table on mobile (`md:hidden` / `hidden md:block`). Expanded dropdown has 4 labeled sections: P&L & Size (unrealized P&L $ + shares), Stop & Risk (stop $, dist to stop, stop %), Signal Quality (conviction + confidence bar), Entry Reasoning (thesis + thesis intact status). Desktop table dropdown cleaned up — removed Stop %, Stop Price, Today Δ, Market Val, Conf Score (all redundant with table columns); only conviction stays alongside thesis. Reasoning font reduced to `text-xs` to match table density. Full-width reasoning (removed `max-w-3xl`). `ArrowRight` icon replaces invisible `text-rim` arrow between entry and current price.
+- **Letter page** — archive sidebar `hidden lg:block`; horizontal pill-strip session picker added for mobile (`lg:hidden`, `-mx-4 px-4 overflow-x-auto`); prev/next nav `hidden lg:flex`; letter padding `px-4 md:px-8`; `max-w-2xl` removed from letter body so prose fills the full card width.
+- **Research watchlist** — `w-52` fixed column replaced with `flex-col md:flex-row` adaptive layout; niche label moves to its own line on mobile via `w-full md:w-auto`.
+- **Agent page** — specialist table hides Rank / Signals / Calib. Error on mobile (`hidden md:table-cell`); session log column `w-36` → `w-28 md:w-36`.
+- **Performance page** — Core Metrics grid `lg:grid-cols-3` → `md:grid-cols-3`; Sector P&L label `w-48` → `w-24 md:w-48`; Trade History table hides Date and Hold columns on mobile.
+- **Dashboard layout redesigned — 2×2 grid** — New layout:
+  - Row 1: Equity Curve | Top Positions
+  - Row 2: Specialist Signals (heat tiles) | Sector Performance
+- **SignalSummaryWidget** — new `web/app/components/SignalSummaryWidget.tsx`. Fetches latest signal per niche via `DISTINCT ON (niche) ORDER BY niche, created_at DESC`. Renders an 8-tile heat grid (`grid-cols-2 md:grid-cols-4`) using the same HSL colour function as the Research heatmap (direction = hue, confidence = intensity). Each tile shows niche short name, direction icon (TrendingUp / TrendingDown / Minus), conviction label. Text colour computed from tile luminance (white on dark, surface-dark on light). Header shows bullish / neutral / bearish tally + session label.
+
 ## Known Open Issues
 
 None. All previously tracked issues resolved as of 2026-05-28.

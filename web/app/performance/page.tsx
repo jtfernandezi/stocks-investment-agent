@@ -434,9 +434,9 @@ export default function PerformancePage() {
           <div className="h-[260px] flex items-center justify-center text-xs text-dim">No data yet</div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={snapshots} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <LineChart data={snapshots} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
               <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false}
-                interval={Math.max(1, Math.floor(snapshots.length / 6))} />
+                interval={0} />
               <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false}
                 tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} width={44} domain={['auto', 'auto']} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle}

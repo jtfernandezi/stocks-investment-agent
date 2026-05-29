@@ -24,8 +24,8 @@ export default function MiniEquityChart({ data, startCapital = 60_000 }: Props) 
         <div className="h-[160px] flex items-center justify-center text-xs text-dim">Loading chart…</div>
       ) : (
         <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
-            <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} interval={Math.max(1, Math.floor(data.length / 5))} />
+          <LineChart data={data} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+            <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} interval={0} />
             <YAxis tick={{ fill: '#9CA3AF', fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fmt} width={40} domain={['auto', 'auto']} />
             <Tooltip
               contentStyle={{ background: '#1A1F2E', border: '1px solid #2D3748', borderRadius: 8, fontSize: 12 }}

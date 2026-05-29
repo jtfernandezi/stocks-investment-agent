@@ -60,13 +60,16 @@ export default async function Dashboard() {
   // ── Equity curve data ─────────────────────────────────────────
   // spy_cumulative_pct = SPY total return % since portfolio start.
   // Hypothetical $60k SPY investment = START_CAPITAL × (1 + pct/100).
-  const equityData = snapshots.map(row => {
-    const portfolio = parseFloat(String(row.portfolio_value_usd));
-    const spyCumPct = parseFloat(String(row.spy_cumulative_pct));
-    const spy = isNaN(spyCumPct) ? START_CAPITAL : START_CAPITAL * (1 + spyCumPct / 100);
-    const d = new Date(String(row.date));
-    return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), portfolio, spy };
-  });
+  const equityData = [
+    { date: 'Start', portfolio: START_CAPITAL, spy: START_CAPITAL },
+    ...snapshots.map(row => {
+      const portfolio = parseFloat(String(row.portfolio_value_usd));
+      const spyCumPct = parseFloat(String(row.spy_cumulative_pct));
+      const spy = isNaN(spyCumPct) ? START_CAPITAL : START_CAPITAL * (1 + spyCumPct / 100);
+      const d = new Date(String(row.date));
+      return { date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }), portfolio, spy };
+    }),
+  ];
 
   // ── Sector P&L from open positions ───────────────────────────
   const sectorMap: Record<string, { pnlUsd: number; costBasis: number }> = {};

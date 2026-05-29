@@ -55,15 +55,16 @@ export default async function ResearchPage() {
         ) : (
           <div className="bg-panel border border-rim rounded-xl divide-y divide-rim/40">
             {watchlist.map(w => (
-              <div key={`${w.ticker}-${w.niche}`} className="px-5 py-4 flex items-start gap-4">
-                <div className="flex items-center gap-3 shrink-0 w-52">
+              <div key={`${w.ticker}-${w.niche}`} className="px-4 md:px-5 py-3.5 md:py-4 flex flex-col md:flex-row md:items-start gap-1 md:gap-4">
+                {/* Ticker + direction + niche — stacks on mobile, fixed-width column on desktop */}
+                <div className="flex items-center gap-2 flex-wrap md:shrink-0 md:w-52">
                   <span className="font-mono text-sm font-semibold text-ink">{w.ticker}</span>
                   <span className={`text-xs font-medium ${watchDirStyle[w.direction] ?? 'text-dim'}`}>
                     {w.direction === 'BULLISH' ? '↑' : w.direction === 'BEARISH' ? '↓' : '·'} {w.direction}
                   </span>
+                  <span className="text-xs text-accent w-full md:w-auto">{w.nicheDisplay}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs text-accent mb-0.5">{w.nicheDisplay}</p>
                   <p className="text-xs text-dim leading-relaxed">{w.reason || '—'}</p>
                 </div>
               </div>

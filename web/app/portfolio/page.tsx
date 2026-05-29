@@ -99,18 +99,20 @@ function SectorTreemap({ cells }: { cells: SectorCell[] }) {
   const rowTotals = rows.map(r => r.reduce((s, c) => s + c.total, 0));
 
   return (
-    <div className="flex flex-col gap-1.5" style={{ height: 280 }}>
-      {rows.map((row, ri) => (
-        <div
-          key={ri}
-          className="flex gap-1.5"
-          style={{ flex: rowTotals[ri] / grand }}
-        >
-          {row.map(cell => (
-            <SectorBlock key={cell.niche} cell={cell} rowTotal={rowTotals[ri]} />
-          ))}
-        </div>
-      ))}
+    <div className="overflow-x-auto">
+      <div className="flex flex-col gap-1.5 min-w-[480px]" style={{ height: 280 }}>
+        {rows.map((row, ri) => (
+          <div
+            key={ri}
+            className="flex gap-1.5"
+            style={{ flex: rowTotals[ri] / grand }}
+          >
+            {row.map(cell => (
+              <SectorBlock key={cell.niche} cell={cell} rowTotal={rowTotals[ri]} />
+            ))}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -250,6 +252,103 @@ function ExpandableRow({ p }: { p: Position }) {
   );
 }
 
+// ── Mobile position card ──────────────────────────────────────────────────────
+
+function MobilePositionCard({ p }: { p: Position }) {
+  const [open, setOpen] = useState(false);
+  const up = p.pnl >= 0;
+  const nearStop    = p.stopProximity === 'CRITICAL' || p.stopProximity === 'WARNING';
+  const thesisValid = p.thesisIntact ?? true;
+
+  return (
+    <div className="border-b border-rim/40 last:border-0">
+      <button
+        className="w-full text-left px-4 py-3.5 active:bg-ink/5 transition-colors"
+        onClick={() => setOpen(o => !o)}
+      >
+        {/* Row 1: ticker + side badge | P&L % */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-ink text-sm">{p.ticker}</span>
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
+              {p.side}
+            </span>
+            {nearStop && (
+              <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-1.5 py-0.5 rounded-full">
+                {p.stopProximity}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+              {up ? '+' : ''}{p.pnlPct.toFixed(2)}%
+            </span>
+            {open ? <ChevronDown size={13} className="text-dim" /> : <ChevronRight size={13} className="text-dim" />}
+          </div>
+        </div>
+
+        {/* Row 2: niche | market value */}
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-xs text-dim truncate mr-4">{p.nicheDisplay}</span>
+          <span className="font-mono text-xs text-dim shrink-0">{usd(p.marketValue)}</span>
+        </div>
+
+        {/* Row 3: entry → current | stop */}
+        <div className="flex items-center justify-between mt-1.5 text-xs font-mono">
+          <span className="text-dim">
+            {usd(p.entryPrice)} <span className="text-rim">→</span> <span className="text-ink">{usd(p.currentPrice)}</span>
+            <span className={`ml-1.5 ${p.changeToday >= 0 ? 'text-gain' : 'text-loss'}`}>
+              {p.changeToday >= 0 ? '+' : ''}{p.changeToday.toFixed(2)}%
+            </span>
+          </span>
+          {p.stopPct != null && (
+            <span className={nearStop ? 'text-yellow-400 font-semibold' : 'text-dim'}>
+              Stop {p.stopPct.toFixed(1)}%
+            </span>
+          )}
+        </div>
+
+        {/* Thesis status */}
+        {!thesisValid && (
+          <div className="flex items-center gap-1 mt-1.5">
+            <AlertTriangle size={11} className="text-yellow-400 shrink-0" />
+            <span className="text-[10px] text-yellow-400">Thesis weakening — under review</span>
+          </div>
+        )}
+      </button>
+
+      {/* Expanded detail */}
+      {open && (
+        <div className="px-4 pb-4 pt-2 bg-surface/50 border-t border-rim/30">
+          <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-2">Entry Reasoning</p>
+          {p.thesis
+            ? <p className="text-xs text-ink leading-relaxed">{p.thesis}</p>
+            : <p className="text-xs text-dim italic">No entry reasoning recorded.</p>}
+
+          <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
+            {[
+              { l: 'Stop $',     v: p.stopPrice != null ? usd(p.stopPrice) : '—' },
+              { l: 'Conviction', v: p.conviction ?? '—' },
+              { l: 'Confidence', v: p.effectiveConfidence != null ? p.effectiveConfidence.toFixed(2) : '—' },
+            ].map(({ l, v }) => (
+              <div key={l} className="bg-panel rounded-lg p-2">
+                <div className="text-dim text-[10px]">{l}</div>
+                <div className="text-ink font-mono font-medium">{v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1.5 mt-3">
+            {thesisValid
+              ? <><ShieldCheck size={12} className="text-gain" /><span className="text-xs text-gain">Thesis intact</span></>
+              : <><AlertTriangle size={12} className="text-yellow-400" /><span className="text-xs text-yellow-400">Thesis weakening</span></>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
@@ -318,52 +417,61 @@ export default function PortfolioPage() {
   return (
     <PageShell>
       {/* Header */}
-      <div className="flex items-start justify-between flex-wrap gap-4">
+      <div className="flex items-start justify-between flex-wrap gap-3 md:gap-4">
         <div>
           <h1 className="text-xl font-semibold text-ink">Portfolio</h1>
-          <p className="text-sm text-dim mt-1">
+          <p className="text-xs md:text-sm text-dim mt-1">
             {positions.filter(p => p.side === 'LONG').length} long ·{' '}
-            {positions.filter(p => p.side === 'SHORT').length} short · unrealized P&amp;L:{' '}
+            {positions.filter(p => p.side === 'SHORT').length} short · P&amp;L:{' '}
             <span className={unrealizedPnL >= 0 ? 'text-gain' : 'text-loss'}>
               {unrealizedPnL >= 0 ? '+' : '−'}${Math.abs(unrealizedPnL).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </span>
           </p>
         </div>
-        <div className="flex gap-6 text-sm">
+        <div className="flex gap-4 md:gap-6 text-sm">
           <div>
-            <p className="text-xs text-dim">Long Exposure</p>
-            <p className="font-mono text-ink">${totalLong.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
+            <p className="text-xs text-dim">Long</p>
+            <p className="font-mono text-ink text-sm">${totalLong.toLocaleString('en-US', { maximumFractionDigits: 0 })}</p>
           </div>
           <div>
-            <p className="text-xs text-dim">Short Exposure</p>
-            <p className="font-mono text-loss">${totalShort.toLocaleString('en-US', { maximumFractionDigits: 0 })} / $12,000 max</p>
+            <p className="text-xs text-dim">Short</p>
+            <p className="font-mono text-loss text-sm">${totalShort.toLocaleString('en-US', { maximumFractionDigits: 0 })}<span className="text-dim text-xs hidden md:inline"> / $12k max</span></p>
           </div>
         </div>
       </div>
 
       {/* Positions table */}
       <div className="bg-panel border border-rim rounded-xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-rim">
-          <p className="text-xs text-dim">Click any row to see orchestrator reasoning · Live data from Alpaca</p>
+        <div className="px-4 md:px-5 py-3 border-b border-rim">
+          <p className="text-xs text-dim hidden md:block">Click any row to see orchestrator reasoning · Live data from Alpaca</p>
+          <p className="text-xs text-dim md:hidden">Tap a position to see reasoning · Live data</p>
         </div>
         {positions.length === 0 ? (
           <div className="px-5 py-10 text-center text-xs text-dim">No open positions</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-rim">
-                  <th className="px-3 py-2 w-4" />
-                  {['Ticker', 'Side', 'Shares', 'Entry', 'Current', 'Size', 'P&L', 'P&L %', 'Stop %', 'Stop $', 'Dist to Stop', 'Day Δ', 'Conf', 'Thesis', 'Alert'].map(h => (
-                    <th key={h} className="text-left text-[10px] text-dim font-medium uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {positions.map(p => <ExpandableRow key={p.ticker} p={p} />)}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {/* Mobile: card list */}
+            <div className="md:hidden divide-y divide-rim/40">
+              {positions.map(p => <MobilePositionCard key={p.ticker} p={p} />)}
+            </div>
+
+            {/* Desktop: full table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-rim">
+                    <th className="px-3 py-2 w-4" />
+                    {['Ticker', 'Side', 'Shares', 'Entry', 'Current', 'Size', 'P&L', 'P&L %', 'Stop %', 'Stop $', 'Dist to Stop', 'Day Δ', 'Conf', 'Thesis', 'Alert'].map(h => (
+                      <th key={h} className="text-left text-[10px] text-dim font-medium uppercase tracking-wider px-3 py-2 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {positions.map(p => <ExpandableRow key={p.ticker} p={p} />)}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -410,7 +518,7 @@ export default function PortfolioPage() {
           <div className="mt-5 pt-4 border-t border-rim/40 space-y-2">
             {posWeights.map(p => (
               <div key={p.ticker} className="flex items-center gap-3">
-                <span className="font-mono text-xs text-ink w-12 shrink-0">{p.ticker}</span>
+                <span className="font-mono text-xs text-ink w-10 shrink-0">{p.ticker}</span>
                 <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full ${p.side === 'LONG' ? 'bg-gain/70' : 'bg-loss/70'}`}

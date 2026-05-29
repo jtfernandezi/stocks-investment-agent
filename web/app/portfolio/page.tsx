@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertTriangle, ShieldCheck, ArrowRight } from 'lucide-react';
 import PageShell from '../components/PageShell';
 import CorrelationHeatmap from '../components/CorrelationHeatmap';
 
@@ -262,19 +262,20 @@ function MobilePositionCard({ p }: { p: Position }) {
 
   return (
     <div className="border-b border-rim/40 last:border-0">
+      {/* ── Always-visible summary row ── */}
       <button
         className="w-full text-left px-4 py-3.5 active:bg-ink/5 transition-colors"
         onClick={() => setOpen(o => !o)}
       >
-        {/* Row 1: ticker + side badge | P&L % */}
+        {/* Row 1: ticker + badges | P&L % + chevron */}
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <span className="font-semibold text-ink text-sm">{p.ticker}</span>
-            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
               {p.side}
             </span>
             {nearStop && (
-              <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-1.5 py-0.5 rounded-full">
+              <span className="text-[10px] bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-1.5 py-0.5 rounded-full shrink-0">
                 {p.stopProximity}
               </span>
             )}
@@ -293,11 +294,13 @@ function MobilePositionCard({ p }: { p: Position }) {
           <span className="font-mono text-xs text-dim shrink-0">{usd(p.marketValue)}</span>
         </div>
 
-        {/* Row 3: entry → current | stop */}
+        {/* Row 3: entry → current + today Δ | stop % */}
         <div className="flex items-center justify-between mt-1.5 text-xs font-mono">
-          <span className="text-dim">
-            {usd(p.entryPrice)} <span className="text-rim">→</span> <span className="text-ink">{usd(p.currentPrice)}</span>
-            <span className={`ml-1.5 ${p.changeToday >= 0 ? 'text-gain' : 'text-loss'}`}>
+          <span className="text-dim flex items-center gap-1">
+            {usd(p.entryPrice)}
+            <ArrowRight size={11} className="text-dim/50 shrink-0" />
+            <span className="text-ink">{usd(p.currentPrice)}</span>
+            <span className={`ml-1 ${p.changeToday >= 0 ? 'text-gain' : 'text-loss'}`}>
               {p.changeToday >= 0 ? '+' : ''}{p.changeToday.toFixed(2)}%
             </span>
           </span>
@@ -308,7 +311,6 @@ function MobilePositionCard({ p }: { p: Position }) {
           )}
         </div>
 
-        {/* Thesis status */}
         {!thesisValid && (
           <div className="flex items-center gap-1 mt-1.5">
             <AlertTriangle size={11} className="text-yellow-400 shrink-0" />
@@ -317,32 +319,83 @@ function MobilePositionCard({ p }: { p: Position }) {
         )}
       </button>
 
-      {/* Expanded detail */}
+      {/* ── Expanded: all remaining data points ── */}
       {open && (
-        <div className="px-4 pb-4 pt-2 bg-surface/50 border-t border-rim/30">
-          <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-2">Entry Reasoning</p>
-          {p.thesis
-            ? <p className="text-xs text-ink leading-relaxed">{p.thesis}</p>
-            : <p className="text-xs text-dim italic">No entry reasoning recorded.</p>}
+        <div className="px-4 pb-5 pt-3 bg-surface/50 border-t border-rim/30 space-y-4">
 
-          <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
-            {[
-              { l: 'Stop $',     v: p.stopPrice != null ? usd(p.stopPrice) : '—' },
-              { l: 'Conviction', v: p.conviction ?? '—' },
-              { l: 'Confidence', v: p.effectiveConfidence != null ? p.effectiveConfidence.toFixed(2) : '—' },
-            ].map(({ l, v }) => (
-              <div key={l} className="bg-panel rounded-lg p-2">
-                <div className="text-dim text-[10px]">{l}</div>
-                <div className="text-ink font-mono font-medium">{v}</div>
+          {/* 1. P&L & Size */}
+          <div>
+            <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-2">P&amp;L &amp; Size</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-panel rounded-lg p-3">
+                <p className="text-[10px] text-dim mb-1">Unrealized P&amp;L</p>
+                <p className={`font-mono text-base font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+                  {up ? '+' : '−'}{usd(p.pnl)}
+                </p>
               </div>
-            ))}
+              <div className="bg-panel rounded-lg p-3">
+                <p className="text-[10px] text-dim mb-1">Shares</p>
+                <p className="font-mono text-base font-semibold text-ink">{p.shares.toFixed(2)}</p>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 mt-3">
-            {thesisValid
-              ? <><ShieldCheck size={12} className="text-gain" /><span className="text-xs text-gain">Thesis intact</span></>
-              : <><AlertTriangle size={12} className="text-yellow-400" /><span className="text-xs text-yellow-400">Thesis weakening</span></>}
+          {/* 2. Stop & Risk */}
+          <div>
+            <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-2">Stop &amp; Risk</p>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-panel rounded-lg p-2">
+                <p className="text-[10px] text-dim mb-0.5">Stop $</p>
+                <p className="font-mono text-sm text-ink">{p.stopPrice != null ? usd(p.stopPrice) : '—'}</p>
+              </div>
+              <div className={`bg-panel rounded-lg p-2 ${nearStop ? 'border border-yellow-500/30' : ''}`}>
+                <p className="text-[10px] text-dim mb-0.5">Dist to Stop</p>
+                <p className={`font-mono text-sm ${nearStop ? 'text-yellow-400 font-semibold' : 'text-ink'}`}>
+                  {p.distToStop != null ? usd(p.distToStop) : '—'}
+                </p>
+              </div>
+              <div className="bg-panel rounded-lg p-2">
+                <p className="text-[10px] text-dim mb-0.5">Stop %</p>
+                <p className="font-mono text-sm text-ink">{p.stopPct != null ? `${p.stopPct.toFixed(1)}%` : '—'}</p>
+              </div>
+            </div>
           </div>
+
+          {/* 3. Signal Quality */}
+          <div>
+            <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-2">Signal Quality</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-panel rounded-lg p-2">
+                <p className="text-[10px] text-dim mb-0.5">Conviction</p>
+                <p className="font-mono text-sm text-ink">{p.conviction ?? '—'}</p>
+              </div>
+              <div className="bg-panel rounded-lg p-2">
+                <p className="text-[10px] text-dim mb-1">Confidence</p>
+                {p.effectiveConfidence != null ? (
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex-1 h-1.5 bg-surface rounded-full overflow-hidden">
+                      <div className="h-full bg-accent rounded-full" style={{ width: `${p.effectiveConfidence * 100}%` }} />
+                    </div>
+                    <span className="font-mono text-xs text-dim shrink-0">{p.effectiveConfidence.toFixed(2)}</span>
+                  </div>
+                ) : <p className="font-mono text-sm text-dim">—</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Entry Reasoning */}
+          <div>
+            <p className="text-[10px] text-dim uppercase tracking-wider font-medium mb-2">Entry Reasoning</p>
+            {p.thesis
+              ? <p className="text-xs text-ink leading-relaxed">{p.thesis}</p>
+              : <p className="text-xs text-dim italic">No entry reasoning recorded.</p>}
+            <div className="flex items-center gap-1.5 mt-2.5">
+              {thesisValid
+                ? <><ShieldCheck size={12} className="text-gain" /><span className="text-xs text-gain">Thesis intact as of last session</span></>
+                : <><AlertTriangle size={12} className="text-yellow-400" /><span className="text-xs text-yellow-400">Thesis weakening — under review</span></>}
+            </div>
+          </div>
+
         </div>
       )}
     </div>

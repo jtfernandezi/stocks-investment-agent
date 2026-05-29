@@ -10,10 +10,10 @@ export default function StatCard({ label, value, subtext, trend }: StatCardProps
     trend === 'up' ? 'text-gain' : trend === 'down' ? 'text-loss' : 'text-ink';
 
   return (
-    <div className="bg-panel border border-rim rounded-xl p-4">
-      <p className="text-xs text-dim uppercase tracking-wider mb-2">{label}</p>
-      <p className={`font-mono text-xl font-semibold ${valueColor}`}>{value}</p>
-      {subtext && <p className="text-xs text-dim mt-1">{subtext}</p>}
+    <div className="bg-panel border border-rim rounded-xl p-3 md:p-4">
+      <p className="text-[10px] md:text-xs text-dim uppercase tracking-wider mb-1.5 leading-tight">{label}</p>
+      <p className={`font-mono text-base md:text-xl font-semibold leading-tight ${valueColor}`}>{value}</p>
+      {subtext && <p className="text-[10px] md:text-xs text-dim mt-1 leading-tight">{subtext}</p>}
     </div>
   );
 }

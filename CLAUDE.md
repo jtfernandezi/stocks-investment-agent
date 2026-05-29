@@ -205,6 +205,16 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Watchdog blueprint + README schedule corrected** — `watchdog_blueprint.md` and `README.md` still documented the old `:00`/`:30` schedule. Updated to match the live cron (`10,40 10-15`) — 10:10 AM–3:40 PM ET at :10 and :40 — including the rationale for the :10/:40 offset.
 - **Investor letter prompt rewrite** — `letter_build_prompt.js` overhauled. Previous prompt fed the LLM a raw data dump (entry prices, effective confidence scores, specialist signal tables) leading to mechanical letters. New prompt: practitioner-style LP letter (Howard Marks / Seth Klarman tone), thesis-first prose, no internal jargon. User prompt now includes: positions with entry thesis + days held, trades in plain English, sector rotation outlook, watchlist with trigger conditions, and earnings at-risk. Specialist signal tables and confidence scores removed from letter context entirely.
 
+## Enhancements (2026-05-28 — session 3)
+
+- **Post-Mortem workflow — 3 data bugs fixed** — Execution #353 (ZS post-mortem) revealed that all three context nodes were silently failing, leaving the LLM with no signal history and no ETF benchmark. Root causes and fixes:
+  1. **`Load Signals During Hold` — `entry_date` undefined** — The node is wired from `Load Position Entry`; when that returns `{}` (no `position_metadata` row), `$json.entry_date` is `undefined` and the SQL fails. Fixed: expression now falls back to `$("Workflow Trigger").first().json.entry_date` which is always present.
+  2. **`Fetch ETF Bars` — URL expressions not evaluated** — Query params (`symbols`, `start`, `end`) were embedded as `{{ }}` template strings in the URL field, which n8n does not evaluate in that mode. Fixed: params moved to the node's built-in Query Parameters key-value section with expression mode enabled per field.
+  3. **`Prepare ETF Fetch` — stale niche names** — The inline Code node still mapped `ai_semiconductors → SOXX` and `cloud_hyperscalers → SKYY`. Fixed: updated to `semiconductors` and `enterprise_saas` to match the 2026-05-28 rename. Note: this node has no corresponding local JS file (it is inline in n8n only).
+- **Dashboard — "Buying Power" renamed to "Available Cash"** — Home page stat card was reading `account.buying_power` (2× cash due to Alpaca margin account) and labelling it "Buying Power / Available margin." Since the system never uses margin, this was misleading. Changed to `account.cash` with label "Available Cash / Uninvested cash" (`web/app/page.tsx`).
+- **Dashboard — "Invested" stat card added** — New card inserted between "Available Cash" and "Open Positions" showing gross invested capital (`long_market_value + |short_market_value|`) with subtext "long + short exposure". No new API call — both values already fetched from `/api/account`.
+- **Dashboard — home page stat row expanded to 7 cards** — Grid updated from `xl:grid-cols-6` to `xl:grid-cols-7` so all 7 cards fit in one row on desktop (≥1280px). `lg` breakpoint updated to `grid-cols-4` for cleaner 4/3 wrapping on medium screens.
+
 ## Known Open Issues
 
 None. All previously tracked issues resolved as of 2026-05-28.
@@ -289,6 +299,8 @@ All four workflows activated and running autonomously.
 | `investor_letters` | LLM-written investor letters per close session — `session` UNIQUE, `body` full prose text |
 | `position_metadata` | Entry date, price, niche, thesis per open position — ticker PRIMARY KEY, UPSERTed at BUY/SHORT execution time |
 | `orchestrator_sessions` | One row per orchestrator run — `session_id`, `session_type` (`morning`/`midday`/`close`/`watchdog_flip`), `summary` text. No UNIQUE constraint (watchdog re-runs same session_id). Last 2 rows by `created_at` injected into next orchestrator call as `## 0. PREVIOUS SESSION CONTEXT`. |
+| `watchdog_events` | Contradiction log — written when watchdog LLM outputs `thesis_intact: false` + `news_assessment: CONFIRMS` simultaneously (logical impossibility). Expected to stay empty under normal operation. |
+| `specialist_test_runs` | Schema exists (`run_id`, `niche`, `direction`, `conviction`, `confidence`, `top_picks`, `summary`, `raw_json`, `model`, `temperature`) but **no workflow writes to it**. Appears to be a leftover from an earlier experiment. Currently empty and unused. |
 
 ## Credentials (n8n)
 

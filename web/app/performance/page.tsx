@@ -66,26 +66,26 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
         className="border-b border-rim/40 transition-colors cursor-pointer hover:bg-ink/[0.03]"
         onClick={() => setOpen(o => !o)}
       >
-        <td className="px-4 py-3.5 w-4">
+        <td className="px-3 md:px-4 py-3.5 w-4">
           {open ? <ChevronDown size={13} className="text-dim" /> : <ChevronRight size={13} className="text-dim" />}
         </td>
-        <td className="px-4 py-3.5 font-mono text-xs text-dim">{t.date}</td>
-        <td className="px-4 py-3.5 font-semibold text-ink text-sm">{t.ticker}</td>
-        <td className="px-4 py-3.5">
+        <td className="hidden md:table-cell px-3 md:px-4 py-3.5 font-mono text-xs text-dim">{t.date}</td>
+        <td className="px-3 md:px-4 py-3.5 font-semibold text-ink text-sm">{t.ticker}</td>
+        <td className="px-3 md:px-4 py-3.5">
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
             t.direction === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'
           }`}>{t.direction}</span>
         </td>
-        <td className="px-4 py-3.5 font-mono text-xs text-dim">
+        <td className="hidden md:table-cell px-3 md:px-4 py-3.5 font-mono text-xs text-dim">
           {t.holdDays != null ? `${t.holdDays}d` : '—'}
         </td>
-        <td className={`px-4 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+        <td className={`px-3 md:px-4 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
           {up ? '+' : '−'}{fmt$(t.pnl)}
         </td>
-        <td className={`px-4 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+        <td className={`px-3 md:px-4 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
           {fmtPct(t.pnlPct)}
         </td>
-        <td className="px-4 py-3.5">
+        <td className="px-3 md:px-4 py-3.5">
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             t.status === 'Open' ? 'bg-accent/10 text-accent' : 'bg-dim/10 text-dim'
           }`}>{t.status}</span>
@@ -94,7 +94,7 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
 
       {open && (
         <tr className="border-b border-rim/40 bg-surface/60">
-          <td colSpan={8} className="px-8 py-5">
+          <td colSpan={8} className="px-4 md:px-8 py-4 md:py-5">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               <div className="lg:col-span-2 space-y-4">
                 {t.status === 'Open' && t.thesis && (
@@ -456,7 +456,7 @@ export default function PerformancePage() {
       {/* Core Metrics */}
       <div>
         <p className="text-xs text-dim uppercase tracking-wider mb-3">Core Metrics</p>
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4">
           {coreMetrics.map(m => (
             <div key={m.label} className="bg-panel border border-rim rounded-xl p-4">
               <p className="text-xs text-dim uppercase tracking-wider mb-2">{m.label}</p>
@@ -656,7 +656,7 @@ export default function PerformancePage() {
             const up = s.pnlPct > 0;
             return (
               <div key={s.niche} className="flex items-center gap-3">
-                <span className="text-xs text-dim w-48 shrink-0 truncate">{s.niche}</span>
+                <span className="text-xs text-dim w-24 md:w-48 shrink-0 truncate">{s.niche}</span>
                 <div className="flex-1 flex items-center gap-2">
                   {!s.hasData ? (
                     <span className="text-xs text-dim/40 italic">no trades</span>
@@ -725,8 +725,16 @@ export default function PerformancePage() {
               <thead>
                 <tr className="border-b border-rim">
                   <th className="px-4 py-3 w-4" />
-                  {['Date', 'Ticker', 'Direction', 'Hold', 'P&L', 'P&L %', 'Status'].map(h => (
-                    <th key={h} className="text-left text-xs text-dim font-medium uppercase tracking-wider px-4 py-3 whitespace-nowrap">{h}</th>
+                  {[
+                    { label: 'Date',      hide: true  },
+                    { label: 'Ticker',    hide: false },
+                    { label: 'Direction', hide: false },
+                    { label: 'Hold',      hide: true  },
+                    { label: 'P&L',       hide: false },
+                    { label: 'P&L %',     hide: false },
+                    { label: 'Status',    hide: false },
+                  ].map(({ label, hide }) => (
+                    <th key={label} className={`text-left text-xs text-dim font-medium uppercase tracking-wider px-3 md:px-4 py-3 whitespace-nowrap ${hide ? 'hidden md:table-cell' : ''}`}>{label}</th>
                   ))}
                 </tr>
               </thead>

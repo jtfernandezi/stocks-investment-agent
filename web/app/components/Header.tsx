@@ -25,28 +25,45 @@ export default function Header() {
   const alphaUp  = !data || data.alphaPct  == null || isNaN(data.alphaPct) || data.alphaPct >= 0;
 
   return (
-    <header className="h-14 border-b border-rim bg-panel/60 px-6 flex items-center justify-between shrink-0">
-      <div className="flex items-center gap-4 text-xs text-dim">
-        <Clock size={13} />
-        <span>Next session: <span className="text-ink">{data?.nextSession ?? '—'}</span></span>
-        <span className="text-rim">|</span>
-        <span>Last run: <span className="text-ink">{data?.lastRun ?? '—'}</span></span>
+    <header className="h-12 md:h-14 border-b border-rim bg-panel/60 px-4 md:px-6 flex items-center justify-between shrink-0 gap-4">
+      {/* Left: session info — full on desktop, abbreviated on mobile */}
+      <div className="flex items-center gap-2 text-xs text-dim min-w-0">
+        <Clock size={13} className="shrink-0 hidden md:block" />
+        <span className="hidden md:inline whitespace-nowrap">
+          Next session: <span className="text-ink">{data?.nextSession ?? '—'}</span>
+        </span>
+        <span className="md:hidden whitespace-nowrap">
+          Next: <span className="text-ink">{data?.nextSession ?? '—'}</span>
+        </span>
+        <span className="text-rim hidden md:inline">|</span>
+        <span className="hidden md:inline whitespace-nowrap">
+          Last run: <span className="text-ink">{data?.lastRun ?? '—'}</span>
+        </span>
       </div>
 
-      <div className="flex items-center gap-6">
-        <div className="text-right">
+      {/* Right: SPY + alpha */}
+      <div className="flex items-center gap-3 md:gap-6 shrink-0">
+        {/* SPY return — desktop only */}
+        <div className="text-right hidden md:block">
           <p className="text-xs text-dim">SPY return</p>
           <p className="font-mono text-sm text-ink">{spyStr}</p>
         </div>
-        <div className="w-px h-6 bg-rim" />
-        <div className="text-right flex items-center gap-2">
+        <div className="w-px h-6 bg-rim hidden md:block" />
+
+        {/* vs SPY — always visible */}
+        <div className="text-right flex items-center gap-1.5">
           {alphaUp
             ? <TrendingUp size={14} className="text-gain" />
             : <TrendingDown size={14} className="text-loss" />}
           <div>
             <p className="text-xs text-dim">vs SPY</p>
             <p className={`font-mono text-sm font-medium ${alphaUp ? 'text-gain' : 'text-loss'}`}>
-              {alphaStr}{data && data.alphaPct != null && !isNaN(data.alphaPct) ? (data.alphaPct >= 0 ? ' above' : ' below') : ''}
+              {alphaStr}
+              <span className="hidden md:inline">
+                {data && data.alphaPct != null && !isNaN(data.alphaPct)
+                  ? data.alphaPct >= 0 ? ' above' : ' below'
+                  : ''}
+              </span>
             </p>
           </div>
         </div>

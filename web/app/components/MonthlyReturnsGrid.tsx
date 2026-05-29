@@ -30,11 +30,11 @@ export default function MonthlyReturnsGrid({ data }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-rim">
-              <th className="text-left text-xs text-dim font-medium px-5 py-3 w-16">Year</th>
+              <th className="text-left text-xs text-dim font-medium px-4 py-3 w-14">Year</th>
               {MONTHS.map(m => (
-                <th key={m} className="text-right text-xs text-dim font-medium px-3 py-3 w-20">{m}</th>
+                <th key={m} className="text-right text-xs text-dim font-medium px-2 py-3 w-16">{m}</th>
               ))}
-              <th className="text-right text-xs text-dim font-medium px-5 py-3 w-20">Year</th>
+              <th className="text-right text-xs text-dim font-medium px-4 py-3 w-16">Year</th>
             </tr>
           </thead>
           <tbody>
@@ -45,18 +45,18 @@ export default function MonthlyReturnsGrid({ data }: Props) {
                   key={row.year}
                   className={`border-b border-rim/40 ${row.current ? 'bg-gain/[0.04]' : ''}`}
                 >
-                  <td className={`px-5 py-4 font-mono text-sm font-semibold ${row.current ? 'text-gain' : 'text-dim'}`}>
+                  <td className={`px-4 py-3 font-mono text-sm font-semibold ${row.current ? 'text-gain' : 'text-dim'}`}>
                     {row.year}
                   </td>
                   {row.months.map((v, i) => {
                     const { text, color } = fmt(v);
                     return (
-                      <td key={i} className={`px-3 py-4 text-right font-mono text-sm ${color}`}>
+                      <td key={i} className={`px-2 py-3 text-right font-mono text-xs ${color}`}>
                         {text}
                       </td>
                     );
                   })}
-                  <td className={`px-5 py-4 text-right font-mono text-sm font-semibold ${annual.color}`}>
+                  <td className={`px-4 py-3 text-right font-mono text-sm font-semibold ${annual.color}`}>
                     {annual.text}
                   </td>
                 </tr>

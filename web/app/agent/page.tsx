@@ -114,8 +114,16 @@ export default function AgentPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-rim">
-                  {['Rank', 'Specialist', 'Hit Rate', 'Signals', 'Calib. Error', 'Scaling ×', 'Trend'].map(h => (
-                    <th key={h} className="text-left text-xs text-dim font-medium uppercase tracking-wider px-5 py-3 whitespace-nowrap">{h}</th>
+                  {[
+                    { label: 'Rank',        hide: true  },
+                    { label: 'Specialist',  hide: false },
+                    { label: 'Hit Rate',    hide: false },
+                    { label: 'Signals',     hide: true  },
+                    { label: 'Calib. Error',hide: true  },
+                    { label: 'Scaling ×',   hide: false },
+                    { label: 'Trend',       hide: false },
+                  ].map(({ label, hide }) => (
+                    <th key={label} className={`text-left text-xs text-dim font-medium uppercase tracking-wider px-4 md:px-5 py-3 whitespace-nowrap ${hide ? 'hidden md:table-cell' : ''}`}>{label}</th>
                   ))}
                 </tr>
               </thead>
@@ -126,12 +134,12 @@ export default function AgentPage() {
                   const ce = s.calibration_error;
                   return (
                     <tr key={s.niche} className="border-b border-rim/40">
-                      <td className="px-5 py-3.5 font-mono text-dim text-xs">#{i + 1}</td>
-                      <td className="px-5 py-3.5 text-ink font-medium">{s.nicheDisplay}</td>
-                      <td className="px-5 py-3.5">
+                      <td className="hidden md:table-cell px-4 md:px-5 py-3.5 font-mono text-dim text-xs">#{i + 1}</td>
+                      <td className="px-4 md:px-5 py-3.5 text-ink font-medium text-sm">{s.nicheDisplay}</td>
+                      <td className="px-4 md:px-5 py-3.5">
                         {hr != null ? (
                           <div className="flex items-center gap-2">
-                            <div className="w-20 h-1.5 bg-surface rounded-full overflow-hidden">
+                            <div className="w-12 md:w-20 h-1.5 bg-surface rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${hr >= 0.65 ? 'bg-gain' : hr >= 0.55 ? 'bg-yellow-400' : 'bg-loss'}`}
                                 style={{ width: `${hr * 100}%` }}
@@ -141,22 +149,22 @@ export default function AgentPage() {
                           </div>
                         ) : <span className="text-dim text-xs">—</span>}
                       </td>
-                      <td className="px-5 py-3.5 font-mono text-dim">{s.total_signals ?? '—'}</td>
-                      <td className="px-5 py-3.5">
+                      <td className="hidden md:table-cell px-4 md:px-5 py-3.5 font-mono text-dim">{s.total_signals ?? '—'}</td>
+                      <td className="hidden md:table-cell px-4 md:px-5 py-3.5">
                         {ce != null ? (
                           <span className={`font-mono text-sm ${ce <= 0.07 ? 'text-gain' : ce <= 0.12 ? 'text-yellow-400' : 'text-loss'}`}>
                             {ce.toFixed(3)}
                           </span>
                         ) : <span className="text-dim text-xs">—</span>}
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 md:px-5 py-3.5">
                         {sf != null ? (
                           <span className={`font-mono text-sm ${sf >= 1 ? 'text-gain' : 'text-loss'}`}>
                             ×{sf.toFixed(2)}
                           </span>
                         ) : <span className="text-dim text-xs">—</span>}
                       </td>
-                      <td className="px-5 py-3.5"><ScalingIcon v={sf} /></td>
+                      <td className="px-4 md:px-5 py-3.5"><ScalingIcon v={sf} /></td>
                     </tr>
                   );
                 })}
@@ -283,8 +291,8 @@ export default function AgentPage() {
             {sessions.map((s, i) => {
               const count = Number(s.action_count ?? 0);
               return (
-                <div key={i} className="px-5 py-4 flex gap-5">
-                  <div className="shrink-0 w-36">
+                <div key={i} className="px-4 md:px-5 py-3.5 md:py-4 flex gap-3 md:gap-5">
+                  <div className="shrink-0 w-28 md:w-36">
                     <p className="text-xs font-mono text-dim">{formatSession(s.session)}</p>
                     {count > 0 && (
                       <span className="mt-1.5 inline-block text-xs px-1.5 py-0.5 rounded bg-gain/10 text-gain">

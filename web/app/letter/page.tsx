@@ -29,7 +29,7 @@ function sessionToShort(session: string): string {
   const p = parseSession(session);
   if (!p) return session;
   const d = new Date(p.date);
-  const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
   const label = p.time.charAt(0).toUpperCase() + p.time.slice(1);
   return `${dateStr} · ${label}`;
 }
@@ -63,13 +63,35 @@ export default function LetterPage() {
     <PageShell>
       <div>
         <h1 className="text-xl font-semibold text-ink">Investor Letter</h1>
-        <p className="text-sm text-dim mt-1">Daily LP update · written by GPT after each close session</p>
+        <p className="text-xs md:text-sm text-dim mt-1">Daily LP update · written by GPT after each close session</p>
       </div>
+
+      {/* Mobile session picker — horizontal pill strip, hidden on desktop */}
+      {!loading && letters.length > 0 && (
+        <div className="lg:hidden overflow-x-auto -mx-4 px-4">
+          <div className="flex gap-2 pb-1 min-w-max">
+            {letters.map((l, i) => (
+              <button
+                key={l.session}
+                onClick={() => setSelected(l.session)}
+                className={`shrink-0 text-xs px-3 py-1.5 rounded-full border whitespace-nowrap transition-colors ${
+                  l.session === selected
+                    ? 'bg-accent/10 text-accent border-accent/30'
+                    : 'text-dim border-rim hover:text-ink'
+                }`}
+              >
+                {i === 0 && <span className="text-gain mr-1">●</span>}
+                {sessionToShort(l.session)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-        {/* Archive sidebar */}
-        <div className="lg:col-span-1">
+        {/* Archive sidebar — desktop only */}
+        <div className="hidden lg:block lg:col-span-1">
           <div className="bg-panel border border-rim rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-rim">
               <h2 className="text-xs font-semibold text-dim uppercase tracking-wider">Archive</h2>
@@ -104,14 +126,15 @@ export default function LetterPage() {
           <div className="bg-panel border border-rim rounded-xl">
 
             {/* Header strip */}
-            <div className="px-8 py-5 border-b border-rim flex items-center justify-between">
-              <div>
+            <div className="px-4 md:px-8 py-4 md:py-5 border-b border-rim flex items-center justify-between gap-4">
+              <div className="min-w-0">
                 <p className="text-xs text-dim uppercase tracking-wider">Alpha Agent Capital</p>
-                <p className="text-sm text-ink mt-0.5">
+                <p className="text-sm text-ink mt-0.5 truncate">
                   {selected ? sessionToLabel(selected) : '—'}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              {/* Prev/next — desktop only; mobile uses pill strip above */}
+              <div className="hidden lg:flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => idx < letters.length - 1 && setSelected(letters[idx + 1].session)}
                   disabled={idx >= letters.length - 1}
@@ -130,16 +153,14 @@ export default function LetterPage() {
             </div>
 
             {/* Letter content */}
-            <div className="px-8 py-8">
+            <div className="px-4 md:px-8 py-6 md:py-8">
               {loading ? (
                 <p className="text-sm text-dim">Loading…</p>
               ) : (
                 <div className="space-y-5 max-w-2xl">
                   {paragraphs.map((para, i) => (
                     <p key={i} className={`text-sm leading-relaxed whitespace-pre-line ${
-                      i === 0 ? 'text-ink font-medium' :
-                      i === paragraphs.length - 1 ? 'text-dim' :
-                      'text-dim'
+                      i === 0 ? 'text-ink font-medium' : 'text-dim'
                     }`}>
                       {para}
                     </p>

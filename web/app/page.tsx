@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
+import PageShell from './components/PageShell';
 import StatCard from './components/StatCard';
 import MarketClock from './components/MarketClock';
 import MiniEquityChart from './components/MiniEquityChart';
@@ -34,7 +33,7 @@ export default async function Dashboard() {
 
   // ── Account metrics ──────────────────────────────────────────
   const equity     = account ? parseFloat(account.equity)      : START_CAPITAL;
-  const cash       = account ? parseFloat(account.buying_power) : 0;  // buying_power = usable cash
+  const cash       = account ? parseFloat(account.cash) : 0;
   const lastEquity = account ? parseFloat(account.last_equity)  : equity;
   const longUsd    = account ? parseFloat(account.long_market_value)  : 0;
   const shortUsd   = account ? parseFloat(account.short_market_value) : 0;
@@ -95,21 +94,15 @@ export default async function Dashboard() {
   const dayUp = dayPnL >= 0;
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <Header />
-
-        <main className="flex-1 p-6 space-y-6">
+    <PageShell>
           {/* Market clock */}
           <MarketClock />
 
           {/* Portfolio hero */}
           <div>
-            <p className="text-xs text-dim uppercase tracking-wider mb-1">Total Portfolio Value</p>
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <h1 className="font-mono text-4xl font-semibold text-ink">
+            <p className="text-[10px] md:text-xs text-dim uppercase tracking-wider mb-1">Total Portfolio Value</p>
+            <div className="flex items-baseline gap-2 md:gap-3 flex-wrap">
+              <h1 className="font-mono text-3xl md:text-4xl font-semibold text-ink">
                 ${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </h1>
               <span className={`font-mono text-sm font-medium flex items-center gap-1 ${dayUp ? 'text-gain' : 'text-loss'}`}>
@@ -120,11 +113,16 @@ export default async function Dashboard() {
           </div>
 
           {/* Stats row */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-3 md:gap-4">
             <StatCard
-              label="Buying Power"
+              label="Available Cash"
               value={`$${cash.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-              subtext="Available margin"
+              subtext="Uninvested cash"
+            />
+            <StatCard
+              label="Invested"
+              value={`$${(longUsd + Math.abs(shortUsd)).toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+              subtext="long + short exposure"
             />
             <StatCard
               label="Open Positions"
@@ -176,19 +174,19 @@ export default async function Dashboard() {
                 {topPositions.map(p => {
                   const up = p.pnlPct >= 0;
                   return (
-                    <div key={p.ticker} className="px-5 py-3.5 flex items-center justify-between">
-                      <div>
+                    <div key={p.ticker} className="px-4 md:px-5 py-3.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
                         <span className="font-semibold text-ink text-sm">{p.ticker}</span>
-                        <span className="text-xs text-dim ml-2">{p.niche}</span>
+                        <span className="text-xs text-dim ml-2 hidden sm:inline truncate">{p.niche}</span>
                       </div>
-                      <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 md:gap-4 shrink-0">
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.side === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'}`}>
                           {p.side}
                         </span>
                         <span className={`font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
                           {up ? '+' : ''}{p.pnlPct.toFixed(2)}%
                         </span>
-                        <span className="font-mono text-xs text-dim">
+                        <span className="font-mono text-xs text-dim hidden sm:inline">
                           ${p.marketVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                         </span>
                       </div>
@@ -198,8 +196,6 @@ export default async function Dashboard() {
               </div>
             )}
           </div>
-        </main>
-      </div>
-    </div>
+    </PageShell>
   );
 }

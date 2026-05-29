@@ -29,7 +29,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 h-screen sticky top-0 bg-panel border-r border-rim flex flex-col transition-all duration-200`}>
+    <aside className={`${collapsed ? 'w-16' : 'w-60'} shrink-0 h-screen sticky top-0 bg-panel border-r border-rim hidden md:flex flex-col transition-all duration-200`}>
       {/* Header */}
       <div className={`py-5 border-b border-rim flex items-center gap-2.5 ${collapsed ? 'px-3 justify-center' : 'px-5'}`}>
         <BotMessageSquare size={20} className="text-accent shrink-0" />

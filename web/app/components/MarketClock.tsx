@@ -81,18 +81,20 @@ export default function MarketClock() {
   const color       = isOpen ? 'text-gain' : 'text-dim';
 
   return (
-    <div className="bg-panel border border-rim rounded-xl p-4 flex items-center gap-3">
+    <div className="bg-panel border border-rim rounded-xl p-4 flex flex-wrap items-center gap-x-3 gap-y-2">
       <div className={`flex items-center gap-1.5 ${color}`}>
-        <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-gain animate-pulse' : 'bg-dim'}`} />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${isOpen ? 'bg-gain animate-pulse' : 'bg-dim'}`} />
         <span className="text-sm font-medium">{label}</span>
       </div>
-      <div className="w-px h-4 bg-rim" />
+      <div className="w-px h-4 bg-rim hidden md:block" />
       <div className="flex items-center gap-1.5 text-xs text-dim">
         <Clock size={12} />
         {sublabel}
       </div>
-      <div className="w-px h-4 bg-rim" />
-      <span className="text-xs text-dim">Next session: <span className="text-ink">{nextSession}</span></span>
+      <div className="w-px h-4 bg-rim hidden md:block" />
+      <span className="text-xs text-dim w-full md:w-auto">
+        Next session: <span className="text-ink">{nextSession}</span>
+      </span>
     </div>
   );
 }

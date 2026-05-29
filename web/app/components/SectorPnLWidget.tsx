@@ -16,7 +16,7 @@ export default function SectorPnLWidget({ sectors }: Props) {
 
           return (
             <div key={s.niche} className="flex items-center gap-3">
-              <span className="text-xs text-dim w-44 shrink-0 truncate">{s.niche}</span>
+              <span className="text-xs text-dim w-24 md:w-44 shrink-0 truncate">{s.niche}</span>
               <div className="flex-1 flex items-center gap-2">
                 {noPos ? (
                   <span className="text-xs text-dim/40 italic">no position</span>

@@ -53,14 +53,21 @@ const snapshotPayload = {
 };
 
 // New watchlist items (replace entire watchlist each session)
-const newWatchlist = (orch.watchlist || []).map(w => ({
-  ticker:            w.ticker,
-  niche:             w.niche,
-  direction:         w.direction,
-  reason:            w.reason || '',
-  trigger_condition: w.trigger || '',
-  session_id:        orch.session_id,
-}));
+// Dedup by ticker — LLM occasionally emits the same ticker twice with different trigger conditions
+const _seenWL = new Set();
+const newWatchlist = (orch.watchlist || []).reduce((acc, w) => {
+  if (!w.ticker || _seenWL.has(w.ticker)) return acc;
+  _seenWL.add(w.ticker);
+  acc.push({
+    ticker:            w.ticker,
+    niche:             w.niche,
+    direction:         w.direction,
+    reason:            w.reason || '',
+    trigger_condition: w.trigger || '',
+    session_id:        orch.session_id,
+  });
+  return acc;
+}, []);
 
 // Post-mortem payloads (one per SELL/COVER)
 // These are sent as webhook calls to the post-mortem workflow.

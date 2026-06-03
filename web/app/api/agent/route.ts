@@ -20,10 +20,10 @@ export async function GET() {
     `, [] as Record<string, unknown>[]),
 
     safe(() => sql`
-      SELECT pattern_tag, ev::float, win_rate::float,
-             avg_win_pct::float, avg_loss_pct::float, sample_count
+      SELECT pattern_type AS pattern_tag, expected_value::float AS ev, win_rate::float,
+             avg_win_pct::float, avg_loss_pct::float, total_trades AS sample_count
       FROM stocks.pattern_performance
-      ORDER BY ev DESC
+      ORDER BY expected_value DESC NULLS LAST
     `, [] as Record<string, unknown>[]),
 
     safe(() => sql`

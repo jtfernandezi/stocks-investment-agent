@@ -51,7 +51,7 @@ const enrichedActions = (parsed.portfolio_actions || []).map(action => {
     }
   } else {
     if (price && action.size_usd) {
-      shares = Math.floor(action.size_usd / price * 100) / 100;  // round down to 2 decimals
+      shares = Math.floor(action.size_usd / price);  // whole shares only — trailing stop GTC orders reject fractionals
     } else if (action.shares) {
       shares = action.shares;  // last resort: use LLM value only when price is unavailable
     }
@@ -136,6 +136,8 @@ const postMortemPayloads = closedPositions.map(action => {
     size_usd:                    action.size_usd                    || null,
     entry_specialist_confidence: action.confidence                  || null,
     entry_effective_confidence:  action.effective_confidence        || null,
+    qty:                         action.shares                      || null,
+    size_usd:                    action.size_usd                    || null,
     specialists_at_exit:         orchInput.specialists_summary,
   };
 });

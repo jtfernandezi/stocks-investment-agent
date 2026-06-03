@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const rows = await sql`
-      SELECT ticker, niche, direction, reason
+      SELECT ticker, niche, direction, reason, trigger_condition, session_id
       FROM stocks.watchlist
       ORDER BY niche ASC, ticker ASC
     `;

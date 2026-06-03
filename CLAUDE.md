@@ -268,6 +268,11 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Historical data migrated** — 3 CLOSED rows from `trade_lessons` + 3 OPEN rows from `position_metadata` inserted into `trades` at migration time. `size_usd` is null on historical rows (not captured before 2026-06-03); all future trades will have it.
 - **DB cleanup — dead tables and columns dropped (Section 3)** — `specialist_test_runs` dropped (100% unused, no writes ever). `stock_fundamentals` lost `next_earnings_date` (duplicate of `earnings_calendar`), `price_target_avg/high/low` (always NULL — FMP free tier doesn't cover 80 stocks; column references removed from `fundamentals_parse.js` and `build_specialist_message.js`). `specialist_accuracy` lost `best_pattern` and `worst_pattern` (always NULL, never populated by the UPDATE SQL; references removed from `02_compute_derived_metrics.js` and `build_specialist_message.js`). `specialist_signals.materiality` NOT dropped — contrary to the original plan, it is actively used in `watchdog_parse_flip.js` as a flip threshold guard, in API routes, and in the dashboard; decision deferred.
 - **`portfolio_snapshots` deduplication (Section 4)** — Dropped `orchestrator_summary` (exact duplicate of `orchestrator_sessions.summary`; `/api/agent/route.ts` now LEFT JOINs `orchestrator_sessions` via LATERAL for the summary). Dropped `short_positions_json` (always `[]`, never read by any route) and merged longs + shorts into a single `positions_json` array — each item now carries a `side: 'long' | 'short'` field. `09_process_post_trade.js` and the "Store Portfolio Snapshot" n8n Postgres node SQL updated accordingly. Short positions' `thesis_intact` and `stop_proximity` will now appear in the `/api/positions` overlay query.
+- **Missing columns added (Section 5)** — Five schema gaps filled:
+  - `specialist_signals`: `effective_confidence` + `scaling_factor` added as explicit NUMERIC columns (previously only in-memory). `parse_save_all_signals.js` already computed both — now also writes them to DB. `Store All Signals` n8n SQL updated (INSERT + ON CONFLICT UPDATE). Makes the most important derived values directly queryable without parsing `raw_json`.
+  - `trades.size_usd` and `trades.entry_specialist_direction` — already present from the Section 3 `trades` table creation. No action needed.
+  - `watchlist`: `trigger_condition` + `session_id` added as TEXT columns. Orchestrator already outputs a `trigger` field per watchlist item but it was being silently dropped. `09_process_post_trade.js` now maps `w.trigger` → `trigger_condition` and stamps `orch.session_id`. `Build Watchlist SQL` n8n inline Code node updated to INSERT 6 columns. `/api/watchlist/route.ts` updated to SELECT and return both new fields.
+  - `watchdog_events`: `flip_triggered` (BOOLEAN) + `watchdog_confidence` (NUMERIC) added. `watchdog_parse_flip.js` now captures `a.confidence` from each position assessment and computes `flip_triggered = flips.length > 0` at return time. `Split Contradiction Items` n8n inline Code node passes both through. `Store Contradiction Events` SQL updated.
 
 ## Known Open Issues
 
@@ -342,9 +347,9 @@ All four workflows activated and running autonomously.
 
 | Table | Purpose |
 |-------|---------|
-| `specialist_signals` | Raw signal output per niche per session |
+| `specialist_signals` | Raw signal output per niche per session. Includes `effective_confidence` and `scaling_factor` as explicit columns (computed in `parse_save_all_signals.js` from specialist accuracy calibration). |
 | `portfolio_snapshots` | Portfolio state + P&L vs SPY per session. `positions_json` holds all positions (long + short) with a `side` field. `orchestrator_summary` and `short_positions_json` dropped. |
-| `watchlist` | Stocks flagged for monitoring (replaced entirely each session) |
+| `watchlist` | Stocks flagged for monitoring (replaced entirely each session). Includes `trigger_condition` (specific entry condition from orchestrator `trigger` field) and `session_id` (which session added this item). |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
 | `correlation_matrix` | Pairwise 90-day correlation for all 80 stocks |
 | `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus (buy/hold/sell counts). `price_target_*` and `next_earnings_date` dropped — always NULL. |
@@ -355,7 +360,7 @@ All four workflows activated and running autonomously.
 | `investor_letters` | LLM-written investor letters per close session — `session` UNIQUE, `body` full prose text |
 | `position_metadata` | Entry date, price, niche, thesis, confidence per open position — ticker PRIMARY KEY, UPSERTed at BUY/SHORT execution time |
 | `orchestrator_sessions` | One row per orchestrator run — `session_id`, `session_type` (`morning`/`midday`/`close`/`watchdog_flip`), `summary` text. No UNIQUE constraint (watchdog re-runs same session_id). Last 2 rows by `created_at` injected into next orchestrator call as `## 0. PREVIOUS SESSION CONTEXT`. |
-| `watchdog_events` | Contradiction log — written when watchdog LLM outputs `thesis_intact: false` + `news_assessment: CONFIRMS` simultaneously (logical impossibility). Expected to stay empty under normal operation. |
+| `watchdog_events` | Contradiction log — written when watchdog LLM outputs `thesis_intact: false` + `news_assessment: CONFIRMS` simultaneously (logical impossibility). Includes `flip_triggered` (whether a flip also fired in the same run) and `watchdog_confidence` (LLM confidence on that position assessment). Expected to stay empty under normal operation. |
 | `specialist_test_runs` | **Dropped (2026-06-03)** — was never written to by any workflow. |
 
 ## Credentials (n8n)

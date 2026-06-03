@@ -54,10 +54,12 @@ const snapshotPayload = {
 
 // New watchlist items (replace entire watchlist each session)
 const newWatchlist = (orch.watchlist || []).map(w => ({
-  ticker:    w.ticker,
-  niche:     w.niche,
-  direction: w.direction,
-  reason:    w.reason || '',
+  ticker:            w.ticker,
+  niche:             w.niche,
+  direction:         w.direction,
+  reason:            w.reason || '',
+  trigger_condition: w.trigger || '',
+  session_id:        orch.session_id,
 }));
 
 // Post-mortem payloads (one per SELL/COVER)

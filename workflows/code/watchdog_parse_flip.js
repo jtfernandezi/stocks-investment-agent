@@ -30,6 +30,7 @@ const contradictions = assessments.filter(a =>
   news_assessment: a.news_assessment || null,
   key_headline:    a.key_headline    || null,
   reasoning:       a.reasoning       || null,
+  confidence:      a.confidence      || null,
 }));
 
 // Flip threshold: LLM says thesis broken + confidence ≥ 0.60 + not LOW materiality
@@ -44,11 +45,14 @@ const flips = assessments.filter(a =>
 const checkedAt               = new Date().toISOString();
 const contradictions_detected = contradictions.length > 0;
 
+const flipTriggered = flips.length > 0;
+const taggedContradictions = contradictions.map(c => ({ ...c, flip_triggered: flipTriggered }));
+
 if (flips.length === 0) {
   return [{ json: {
     flips_detected:           false,
     contradictions_detected,
-    contradictions,
+    contradictions:           taggedContradictions,
     checked_at:               checkedAt,
     llm_summary:              parsed.summary || null,
   }}];
@@ -60,7 +64,7 @@ return [{
     flip_count:               flips.length,
     flips,
     contradictions_detected,
-    contradictions,
+    contradictions:           taggedContradictions,
     checked_at:               checkedAt,
     trigger_reason: `Thesis flip detected: ${flips.map(f => `${f.ticker} (${f.side})`).join(', ')}`,
     session_type:   'watchdog_flip',

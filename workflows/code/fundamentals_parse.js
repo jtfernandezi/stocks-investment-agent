@@ -21,9 +21,6 @@ try {
   }
 } catch (_) {}
 
-// Price targets — not yet wired (FMP key pending)
-const pt = {};
-
 const val = v => {
   const n = Number(v);
   return (v !== null && v !== undefined && v !== '' && !isNaN(n)) ? n : null;
@@ -40,7 +37,7 @@ const sql = `INSERT INTO stocks.stock_fundamentals (
   revenue_growth_yoy, gross_margin, net_margin,
   beta, week_52_high, week_52_low, last_eps_surprise_pct,
   analyst_buy, analyst_hold, analyst_sell,
-  price_target_avg, price_target_high, price_target_low, fetched_at
+  fetched_at
 ) VALUES (
   '${ticker}',
   ${s(metric.peTTM)}, ${s(metric.pbAnnual)}, ${s(metric.psTTM)},
@@ -48,7 +45,6 @@ const sql = `INSERT INTO stocks.stock_fundamentals (
   ${s(metric.beta)}, ${s(metric['52WeekHigh'])}, ${s(metric['52WeekLow'])},
   ${s(metric.epsGrowthQuarterlyYoy)},
   ${si(totalBuy)}, ${si(totalHold)}, ${si(totalSell)},
-  ${s(pt.targetMean)}, ${s(pt.targetHigh)}, ${s(pt.targetLow)},
   NOW()
 )
 ON CONFLICT (ticker) DO UPDATE SET
@@ -65,9 +61,6 @@ ON CONFLICT (ticker) DO UPDATE SET
   analyst_buy          = EXCLUDED.analyst_buy,
   analyst_hold         = EXCLUDED.analyst_hold,
   analyst_sell         = EXCLUDED.analyst_sell,
-  price_target_avg     = EXCLUDED.price_target_avg,
-  price_target_high    = EXCLUDED.price_target_high,
-  price_target_low     = EXCLUDED.price_target_low,
   fetched_at           = NOW()`;
 
 return [{ json: { ticker, sql } }];

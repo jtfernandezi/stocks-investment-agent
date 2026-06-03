@@ -35,18 +35,7 @@ function formatStockData(tickers, priceMap, fundamentalsMap, earningsRows, etfDa
     const analystStr = totalAnalysts > 0
       ? `${f.analyst_buy||0}B / ${f.analyst_hold||0}H / ${f.analyst_sell||0}S (${buyPct}% buy)`
       : 'N/A';
-    let ptStr = 'N/A';
-    if (f.price_target_avg && p.current) {
-      const upside = ((f.price_target_avg - p.current) / p.current * 100);
-      const upsideStr = upside >= 0 ? `+${upside.toFixed(1)}% upside` : `${upside.toFixed(1)}% — above PT`;
-      let spreadStr = '';
-      if (f.price_target_high && f.price_target_low && f.price_target_avg > 0) {
-        const spread = (f.price_target_high - f.price_target_low) / f.price_target_avg * 100;
-        const spreadLabel = spread > 40 ? ' — wide' : spread > 20 ? ' — moderate' : '';
-        spreadStr = ` | Spread: $${f.price_target_low}–$${f.price_target_high} (${spread.toFixed(0)}%${spreadLabel})`;
-      }
-      ptStr = `$${f.price_target_avg} (${upsideStr})${spreadStr}`;
-    }
+    const ptStr = 'N/A';
     const revGrowth   = f.revenue_growth_yoy != null ? (f.revenue_growth_yoy * 100).toFixed(1) + '%' : 'N/A';
     const grossMargin = f.gross_margin       != null ? (f.gross_margin       * 100).toFixed(1) + '%' : 'N/A';
     const netMargin   = f.net_margin         != null ? (f.net_margin         * 100).toFixed(1) + '%' : 'N/A';
@@ -103,7 +92,6 @@ function formatAccuracyHistory(niche, specialistEffectiveConf) {
   return [
     `30-Day Performance: ${(acc.hit_rate * 100).toFixed(1)}% directional accuracy across ${acc.total_signals} signals`,
     `Confidence Calibration: You stated avg ${(acc.avg_reported_confidence * 100).toFixed(1)}% confidence → scaling factor ${acc.scaling_factor}x (${calLabel})`,
-    `Best pattern: ${acc.best_pattern||'N/A'} | Worst pattern: ${acc.worst_pattern||'N/A'}`,
     acc.scaling_factor < 0.85 ? `ACTION: If your raw conviction is 0.85, your effective confidence is ~${(0.85 * acc.scaling_factor).toFixed(2)}. Calibrate your stated confidence downward.` : '',
   ].filter(Boolean).join('\n');
 }
@@ -196,9 +184,6 @@ You receive five types of information:
    - avg_reported_confidence: what you were saying vs what actually happened
    - scaling_factor: how the Portfolio Manager adjusts your effective confidence
      (hit_rate / avg_reported_confidence). <1.0 means you are overconfident.
-   - best_pattern: the entry pattern (TREND/BIAS/etc.) on which you have been
-     most accurate
-   - worst_pattern: the entry pattern on which you have been least accurate
 
    Use this self-knowledge to:
    - Calibrate your confidence output. If your scaling_factor is below 0.85, you
@@ -207,11 +192,6 @@ You receive five types of information:
    - If your hit_rate is below 0.50 for the last 30 days: you have no edge this
      period. Output NEUTRAL with LOW conviction unless the news catalyst is
      exceptionally clear and non-ambiguous.
-   - If your worst_pattern is NOISE: you must be especially disciplined. Do not
-     issue a HIGH conviction call if the last 5 sessions are mixed.
-   - If your best_pattern is TREND: lean into TREND entries and be explicit about
-     it when the signal history qualifies.
-
    You do not change your analytical framework based on this data. You change your
    confidence calibration. An analyst who knows their recent track record and
    adjusts accordingly is more valuable than one who ignores it.

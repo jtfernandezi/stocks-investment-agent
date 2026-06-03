@@ -308,8 +308,6 @@ for (const row of accuracyRows) {
     hit_rate:                row.hit_rate,
     avg_reported_confidence: row.avg_reported_confidence,
     total_signals:           row.total_signals || 0,
-    best_pattern:            row.best_pattern || null,
-    worst_pattern:           row.worst_pattern || null,
   };
 }
 

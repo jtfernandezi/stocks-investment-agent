@@ -16,20 +16,18 @@ const shortValue = Math.abs(parseFloat(account.short_market_value || 0));
 const unrealPnl  = parseFloat(account.unrealized_pl || 0);
 
 // Build positions JSON for snapshot (current state before trades fully settle)
-const positionsJson = (orch.portfolio_review || []).map(p => ({
+// Separate longs and shorts using actual Alpaca position qty (qty < 0 = short)
+const shortTickers = new Set(
+  (orch.open_positions || []).filter(p => parseFloat(p.qty) < 0).map(p => p.symbol)
+);
+const allReviews = (orch.portfolio_review || []).map(p => ({
   ticker:          p.ticker,
+  side:            shortTickers.has(p.ticker) ? 'short' : 'long',
   action:          p.current_action,
   thesis_intact:   p.thesis_intact,
   earnings_risk:   p.earnings_risk,
   stop_proximity:  p.stop_proximity,
 }));
-
-// Separate longs and shorts using actual Alpaca position qty (qty < 0 = short)
-const shortTickers = new Set(
-  (orch.open_positions || []).filter(p => parseFloat(p.qty) < 0).map(p => p.symbol)
-);
-const longReviews  = positionsJson.filter(p => !shortTickers.has(p.ticker));
-const shortReviews = positionsJson.filter(p =>  shortTickers.has(p.ticker));
 
 // Escape single quotes for SQL string interpolation ('' is PostgreSQL's escape for ')
 const sqlEsc = s => (s || '').replace(/'/g, "''");
@@ -47,9 +45,7 @@ const snapshotPayload = {
     ? parseFloat(((orch.spyCurrent - orch.prevSpyPrice) / orch.prevSpyPrice * 100).toFixed(4))
     : null,
   spy_cumulative_pct:  orch.spyCumulativePct || 0,
-  orchestrator_summary: sqlEsc(orch.orchestrator_summary),
-  positions_json:      sqlEsc(JSON.stringify(longReviews)),
-  short_positions_json: sqlEsc(JSON.stringify(shortReviews)),
+  positions_json:      sqlEsc(JSON.stringify(allReviews)),
   raw_json:            sqlEsc(JSON.stringify({
     portfolio_actions:         orch.portfolio_actions,
     cash_deployment_rationale: orch.cash_deployment_rationale,

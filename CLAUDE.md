@@ -266,7 +266,8 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Read paths migrated to `trades`** — `Load Trade Lessons` n8n node (Main Analysis v2) now queries `trades WHERE status='CLOSED'`; `generated_at` aliased from `updated_at` so `06_build_orchestrator_input.js` needs no change. `/api/trades` route reads from `trades WHERE status='CLOSED'` and returns `size_usd` as a new field.
 - **`trade_lessons` deprecated** — Table remains in DB as a safety net but nothing reads from or writes to it. Safe to `DROP` once live sessions confirm `trades` is stable.
 - **Historical data migrated** — 3 CLOSED rows from `trade_lessons` + 3 OPEN rows from `position_metadata` inserted into `trades` at migration time. `size_usd` is null on historical rows (not captured before 2026-06-03); all future trades will have it.
-- **DB cleanup — dead tables and columns dropped** — `specialist_test_runs` dropped (100% unused, no writes ever). `stock_fundamentals` lost `next_earnings_date` (duplicate of `earnings_calendar`), `price_target_avg/high/low` (always NULL — FMP free tier doesn't cover 80 stocks; column references removed from `fundamentals_parse.js` and `build_specialist_message.js`). `specialist_accuracy` lost `best_pattern` and `worst_pattern` (always NULL, never populated by the UPDATE SQL; references removed from `02_compute_derived_metrics.js` and `build_specialist_message.js`). `specialist_signals.materiality` NOT dropped — contrary to the original plan, it is actively used in `watchdog_parse_flip.js` as a flip threshold guard, in API routes, and in the dashboard; decision deferred.
+- **DB cleanup — dead tables and columns dropped (Section 3)** — `specialist_test_runs` dropped (100% unused, no writes ever). `stock_fundamentals` lost `next_earnings_date` (duplicate of `earnings_calendar`), `price_target_avg/high/low` (always NULL — FMP free tier doesn't cover 80 stocks; column references removed from `fundamentals_parse.js` and `build_specialist_message.js`). `specialist_accuracy` lost `best_pattern` and `worst_pattern` (always NULL, never populated by the UPDATE SQL; references removed from `02_compute_derived_metrics.js` and `build_specialist_message.js`). `specialist_signals.materiality` NOT dropped — contrary to the original plan, it is actively used in `watchdog_parse_flip.js` as a flip threshold guard, in API routes, and in the dashboard; decision deferred.
+- **`portfolio_snapshots` deduplication (Section 4)** — Dropped `orchestrator_summary` (exact duplicate of `orchestrator_sessions.summary`; `/api/agent/route.ts` now LEFT JOINs `orchestrator_sessions` via LATERAL for the summary). Dropped `short_positions_json` (always `[]`, never read by any route) and merged longs + shorts into a single `positions_json` array — each item now carries a `side: 'long' | 'short'` field. `09_process_post_trade.js` and the "Store Portfolio Snapshot" n8n Postgres node SQL updated accordingly. Short positions' `thesis_intact` and `stop_proximity` will now appear in the `/api/positions` overlay query.
 
 ## Known Open Issues
 
@@ -342,7 +343,7 @@ All four workflows activated and running autonomously.
 | Table | Purpose |
 |-------|---------|
 | `specialist_signals` | Raw signal output per niche per session |
-| `portfolio_snapshots` | Portfolio state + P&L vs SPY per session |
+| `portfolio_snapshots` | Portfolio state + P&L vs SPY per session. `positions_json` holds all positions (long + short) with a `side` field. `orchestrator_summary` and `short_positions_json` dropped. |
 | `watchlist` | Stocks flagged for monitoring (replaced entirely each session) |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
 | `correlation_matrix` | Pairwise 90-day correlation for all 80 stocks |

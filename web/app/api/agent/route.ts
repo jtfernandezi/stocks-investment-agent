@@ -29,18 +29,28 @@ export async function GET() {
     safe(() => sql`
       WITH ranked AS (
         SELECT
-          session,
-          orchestrator_summary,
-          created_at,
-          COALESCE(jsonb_array_length(raw_json->'portfolio_actions'), 0) AS action_count,
-          ROW_NUMBER() OVER (PARTITION BY session ORDER BY created_at DESC) AS rn
-        FROM stocks.portfolio_snapshots
-        WHERE session IS NOT NULL
+          ps.session,
+          COALESCE(jsonb_array_length(ps.raw_json->'portfolio_actions'), 0) AS action_count,
+          ps.created_at,
+          ROW_NUMBER() OVER (PARTITION BY ps.session ORDER BY ps.created_at DESC) AS rn
+        FROM stocks.portfolio_snapshots ps
+        WHERE ps.session IS NOT NULL
       )
-      SELECT session, orchestrator_summary, created_at::text, action_count
-      FROM ranked
-      WHERE rn = 1
-      ORDER BY created_at DESC
+      SELECT
+        r.session,
+        r.created_at::text,
+        r.action_count,
+        os.summary AS orchestrator_summary
+      FROM ranked r
+      LEFT JOIN LATERAL (
+        SELECT summary
+        FROM stocks.orchestrator_sessions
+        WHERE session_id = r.session
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) os ON true
+      WHERE r.rn = 1
+      ORDER BY r.created_at DESC
       LIMIT 15
     `, [] as Record<string, unknown>[]),
 

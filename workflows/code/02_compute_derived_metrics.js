@@ -314,7 +314,7 @@ for (const row of accuracyRows) {
 // ── PATTERN PERFORMANCE MAP ───────────────────────────────────────────────────
 const patternPerfMap = {};
 for (const row of patternRows) {
-  const key = row.niche === 'ALL' ? row.pattern_type : `${row.pattern_type}_${row.niche}`;
+  const key = row.pattern_type;
   patternPerfMap[key] = {
     win_rate:       row.win_rate,
     avg_win_pct:    row.avg_win_pct,

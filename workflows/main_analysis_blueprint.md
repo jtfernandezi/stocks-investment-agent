@@ -257,10 +257,10 @@ WHERE period_days = 30;
 
 ### [9] Load Pattern Performance
 ```sql
-SELECT pattern_type, niche, total_trades, winning_trades, win_rate,
-       avg_win_pct, avg_loss_pct, expected_value, updated_at
+SELECT pattern_type, total_trades, winning_trades, win_rate,
+       avg_win_pct, avg_loss_pct, expected_value
 FROM stocks.pattern_performance
-ORDER BY pattern_type, niche;
+ORDER BY pattern_type;
 ```
 
 ### [10] Load Trade Lessons

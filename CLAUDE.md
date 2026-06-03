@@ -266,6 +266,7 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **Read paths migrated to `trades`** — `Load Trade Lessons` n8n node (Main Analysis v2) now queries `trades WHERE status='CLOSED'`; `generated_at` aliased from `updated_at` so `06_build_orchestrator_input.js` needs no change. `/api/trades` route reads from `trades WHERE status='CLOSED'` and returns `size_usd` as a new field.
 - **`trade_lessons` deprecated** — Table remains in DB as a safety net but nothing reads from or writes to it. Safe to `DROP` once live sessions confirm `trades` is stable.
 - **Historical data migrated** — 3 CLOSED rows from `trade_lessons` + 3 OPEN rows from `position_metadata` inserted into `trades` at migration time. `size_usd` is null on historical rows (not captured before 2026-06-03); all future trades will have it.
+- **DB cleanup — dead tables and columns dropped** — `specialist_test_runs` dropped (100% unused, no writes ever). `stock_fundamentals` lost `next_earnings_date` (duplicate of `earnings_calendar`), `price_target_avg/high/low` (always NULL — FMP free tier doesn't cover 80 stocks; column references removed from `fundamentals_parse.js` and `build_specialist_message.js`). `specialist_accuracy` lost `best_pattern` and `worst_pattern` (always NULL, never populated by the UPDATE SQL; references removed from `02_compute_derived_metrics.js` and `build_specialist_message.js`). `specialist_signals.materiality` NOT dropped — contrary to the original plan, it is actively used in `watchdog_parse_flip.js` as a flip threshold guard, in API routes, and in the dashboard; decision deferred.
 
 ## Known Open Issues
 
@@ -345,16 +346,16 @@ All four workflows activated and running autonomously.
 | `watchlist` | Stocks flagged for monitoring (replaced entirely each session) |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
 | `correlation_matrix` | Pairwise 90-day correlation for all 80 stocks |
-| `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus, price targets |
+| `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus (buy/hold/sell counts). `price_target_*` and `next_earnings_date` dropped — always NULL. |
 | `trades` | Unified trade lifecycle table — `status=OPEN` written at BUY/SHORT, updated to `CLOSED` with full attribution at post-mortem. Source of truth for all trade history. Partial unique index prevents duplicate open positions. |
 | `trade_lessons` | **Deprecated (2026-06-03)** — superseded by `trades`. Table retained as safety net; no workflow reads from or writes to it. Safe to DROP after live verification. |
-| `specialist_accuracy` | 30-day hit rate, scaling_factor, calibration_error per specialist |
+| `specialist_accuracy` | 30-day hit rate, scaling_factor, calibration_error per specialist. `best_pattern`/`worst_pattern` dropped — never populated. |
 | `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
 | `investor_letters` | LLM-written investor letters per close session — `session` UNIQUE, `body` full prose text |
 | `position_metadata` | Entry date, price, niche, thesis, confidence per open position — ticker PRIMARY KEY, UPSERTed at BUY/SHORT execution time |
 | `orchestrator_sessions` | One row per orchestrator run — `session_id`, `session_type` (`morning`/`midday`/`close`/`watchdog_flip`), `summary` text. No UNIQUE constraint (watchdog re-runs same session_id). Last 2 rows by `created_at` injected into next orchestrator call as `## 0. PREVIOUS SESSION CONTEXT`. |
 | `watchdog_events` | Contradiction log — written when watchdog LLM outputs `thesis_intact: false` + `news_assessment: CONFIRMS` simultaneously (logical impossibility). Expected to stay empty under normal operation. |
-| `specialist_test_runs` | Schema exists (`run_id`, `niche`, `direction`, `conviction`, `confidence`, `top_picks`, `summary`, `raw_json`, `model`, `temperature`) but **no workflow writes to it**. Appears to be a leftover from an earlier experiment. Currently empty and unused. |
+| `specialist_test_runs` | **Dropped (2026-06-03)** — was never written to by any workflow. |
 
 ## Credentials (n8n)
 

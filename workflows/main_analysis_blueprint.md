@@ -250,8 +250,7 @@ ORDER BY niche, created_at DESC;
 ### [8] Load Specialist Accuracy
 ```sql
 SELECT niche, hit_rate, avg_reported_confidence, total_signals,
-       high_conviction_signals, scaling_factor, best_pattern, worst_pattern,
-       calibration_error, updated_at
+       high_conviction_signals, scaling_factor, calibration_error, updated_at
 FROM stocks.specialist_accuracy
 WHERE period_days = 30;
 ```
@@ -458,7 +457,7 @@ Input comes from Process Post-Trade — data nested under `$json.snapshot.*`.
 INSERT INTO stocks.portfolio_snapshots
   (session, portfolio_value_usd, cash_usd, long_value_usd, short_value_usd,
    unrealized_pnl_usd, spy_price, spy_return_pct, spy_cumulative_pct,
-   orchestrator_summary, positions_json, short_positions_json, raw_json)
+   positions_json, raw_json)
 VALUES (
   '{{ $json.snapshot.session }}',
   {{ $json.snapshot.portfolio_value_usd }},
@@ -469,9 +468,7 @@ VALUES (
   {{ $json.snapshot.spy_price }},
   {{ $json.snapshot.spy_return_pct }},
   {{ $json.snapshot.spy_cumulative_pct }},
-  '{{ $json.snapshot.orchestrator_summary }}',
   '{{ $json.snapshot.positions_json }}'::jsonb,
-  '{{ $json.snapshot.short_positions_json }}'::jsonb,
   '{{ $json.snapshot.raw_json }}'::jsonb
 )
 ON CONFLICT DO NOTHING;

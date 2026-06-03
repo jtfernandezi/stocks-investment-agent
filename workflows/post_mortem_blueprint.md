@@ -117,8 +117,7 @@ ON CONFLICT DO NOTHING;
 
 ```sql
 INSERT INTO stocks.specialist_accuracy (niche, period_days, total_signals, high_conviction_signals,
-  correct_signals, hit_rate, avg_reported_confidence, scaling_factor, calibration_error,
-  best_pattern, worst_pattern)
+  correct_signals, hit_rate, avg_reported_confidence, scaling_factor, calibration_error)
 SELECT
   niche,
   30 AS period_days,
@@ -140,9 +139,7 @@ SELECT
   ABS(AVG(entry_specialist_confidence) - AVG(CASE WHEN
     (direction = 'long'  AND outcome = 'WIN') OR
     (direction = 'short' AND outcome = 'WIN')
-    THEN 1.0 ELSE 0.0 END)) AS calibration_error,
-  NULL AS best_pattern,
-  NULL AS worst_pattern
+    THEN 1.0 ELSE 0.0 END)) AS calibration_error
 FROM stocks.trade_lessons
 WHERE niche = '{{ $json.niche }}'
   AND exit_date >= CURRENT_DATE - INTERVAL '30 days'

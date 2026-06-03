@@ -125,14 +125,79 @@ function formatTradeLessons(lessons) {
     const dir    = (l.direction || '').toUpperCase();
     const pnlPct = l.pnl_pct != null ? `${l.pnl_pct > 0 ? '+' : ''}${parseFloat(l.pnl_pct).toFixed(2)}%` : '?%';
     const pnlUsd = l.pnl_usd != null ? `$${Math.abs(parseFloat(l.pnl_usd)).toFixed(0)}` : '';
+    const size   = l.size_usd != null ? ` | $${Math.round(parseFloat(l.size_usd)).toLocaleString()} size` : '';
     const days   = l.hold_days != null ? `${l.hold_days}d` : '?d';
     const exitR  = l.exit_reason || 'unknown';
-    return [
-      `  [${date}] ${dir} ${l.ticker} (${l.niche}) — ${l.outcome} | ${pnlPct} (${pnlUsd}) | held ${days} | exit: ${exitR}`,
-      `    Pattern: ${l.entry_pattern || '?'} | Entry timing: ${l.entry_timing || '?'} | Exit timing: ${l.exit_timing || '?'}`,
-      `    Lesson: "${l.key_lesson || 'none'}"`,
-    ].join('\n');
+    const ep     = l.entry_price != null ? `$${parseFloat(l.entry_price).toFixed(2)}` : '?';
+    const xp     = l.exit_price  != null ? `$${parseFloat(l.exit_price).toFixed(2)}`  : '?';
+    const etf    = l.etf_return  != null ? `${l.etf_return > 0 ? '+' : ''}${parseFloat(l.etf_return).toFixed(2)}%` : null;
+    const alpha  = (l.pnl_pct != null && l.etf_return != null)
+      ? `${(parseFloat(l.pnl_pct) - parseFloat(l.etf_return)) >= 0 ? '+' : ''}${(parseFloat(l.pnl_pct) - parseFloat(l.etf_return)).toFixed(2)}%`
+      : null;
+    const confStr = (l.entry_specialist_confidence != null && l.entry_effective_confidence != null)
+      ? `${parseFloat(l.entry_specialist_confidence).toFixed(2)} reported / ${parseFloat(l.entry_effective_confidence).toFixed(2)} effective`
+      : null;
+    const thesis = l.entry_thesis
+      ? `"${l.entry_thesis.substring(0, 140)}${l.entry_thesis.length > 140 ? '...' : ''}"`
+      : 'not recorded';
+
+    const lines = [
+      `  [${date}] ${dir} ${l.ticker} (${l.niche}) — ${l.outcome} | ${pnlPct} (${pnlUsd})${size} | Held: ${days} | Exit: ${exitR}`,
+      `    Entry: ${ep} → Exit: ${xp}${etf ? ` | ETF during hold: ${etf}` : ''}${alpha ? ` | Alpha: ${alpha}` : ''}`,
+    ];
+    if (confStr) lines.push(`    Conf at entry: ${confStr}`);
+    lines.push(`    Thesis: ${thesis}`);
+    lines.push(`    Attribution: sector=${l.sector_accuracy || '?'} | entry=${l.entry_timing || '?'} | exit=${l.exit_timing || '?'}`);
+    lines.push(`    Lesson: "${l.key_lesson || 'none'}"`);
+    return lines.join('\n');
   }).join('\n\n');
+}
+
+// ── HELPER: Aggregate trade statistics ───────────────────────────────────────
+function formatTradeStats(lessons) {
+  if (!lessons || lessons.length === 0) return '  No closed trades yet.';
+  const total   = lessons.length;
+  const wins    = lessons.filter(l => l.outcome === 'WIN').length;
+  const winPct  = Math.round(wins / total * 100);
+  const pnls    = lessons.filter(l => l.pnl_pct != null).map(l => parseFloat(l.pnl_pct));
+  const avgPnl  = pnls.length > 0 ? (pnls.reduce((a, b) => a + b, 0) / pnls.length) : null;
+  const holds   = lessons.filter(l => l.hold_days != null).map(l => l.hold_days);
+  const avgHold = holds.length > 0 ? Math.round(holds.reduce((a, b) => a + b, 0) / holds.length) : null;
+
+  const nicheMap = {};
+  for (const l of lessons) {
+    if (!l.niche) continue;
+    if (!nicheMap[l.niche]) nicheMap[l.niche] = { wins: 0, total: 0 };
+    nicheMap[l.niche].total++;
+    if (l.outcome === 'WIN') nicheMap[l.niche].wins++;
+  }
+  const nicheStr = Object.entries(nicheMap)
+    .map(([n, v]) => `${n}: ${v.wins}/${v.total} (${Math.round(v.wins / v.total * 100)}%)`)
+    .join(' | ');
+
+  const patMap = {};
+  for (const l of lessons) {
+    const p = l.entry_pattern || 'UNKNOWN';
+    if (!patMap[p]) patMap[p] = { wins: 0, total: 0 };
+    patMap[p].total++;
+    if (l.outcome === 'WIN') patMap[p].wins++;
+  }
+  const patStr = Object.entries(patMap)
+    .map(([p, v]) => `${p}: ${v.wins}/${v.total} (${Math.round(v.wins / v.total * 100)}%)`)
+    .join(' | ');
+
+  const alphas = lessons
+    .filter(l => l.pnl_pct != null && l.etf_return != null)
+    .map(l => parseFloat(l.pnl_pct) - parseFloat(l.etf_return));
+  const avgAlpha = alphas.length > 0 ? (alphas.reduce((a, b) => a + b, 0) / alphas.length) : null;
+
+  const lines = [
+    `  Overall (last ${total}): ${wins}/${total} wins (${winPct}%)${avgPnl != null ? ` | avg P&L: ${avgPnl >= 0 ? '+' : ''}${avgPnl.toFixed(2)}%` : ''}${avgHold != null ? ` | avg hold: ${avgHold}d` : ''}`,
+  ];
+  if (nicheStr) lines.push(`  By niche:   ${nicheStr}`);
+  if (patStr)   lines.push(`  By pattern: ${patStr}`);
+  if (avgAlpha != null) lines.push(`  Avg alpha vs sector ETF: ${avgAlpha >= 0 ? '+' : ''}${avgAlpha.toFixed(2)}% per trade`);
+  return lines.join('\n');
 }
 
 // ── HELPER: Format watchlist ──────────────────────────────────────────────────
@@ -309,13 +374,26 @@ Rules:
 - EV > 5.0% with win_rate > 60% → validated edge, prioritize over other entries.
 - Fewer than 5 trades for a pattern → treat EV as unreliable, apply standard rules.
 
-#### 7c. Recent Trade Lessons (trade_lessons table, last 5 entries)
-The post-mortem agent generates one specific, actionable lesson after each closed trade.
+#### 7c. Recent Trade Lessons (trades table, last 5 closed)
+The post-mortem agent generates a structured attribution after each closed trade. Each entry shows:
+- Actual entry and exit prices, position size, and hold duration
+- ETF return during the hold period and alpha generated vs the sector benchmark
+- Confidence at entry (reported by specialist vs effective after scaling)
+- The original entry thesis (what the system believed when it entered)
+- Attribution scores: sector accuracy, entry timing, exit timing
+- One specific, actionable key lesson
 
 How to apply:
 1. Pattern reinforcement: same setup that WORKED → prioritize it today.
 2. Pattern avoidance: documented mistake → check whether today's trade repeats it. If yes, apply penalty or skip.
-3. Do NOT override a valid HIGH conviction TREND entry solely because a recent lesson was cautionary.
+3. Use the entry thesis + ETF alpha to assess whether your edge came from sector selection or stock selection.
+4. Do NOT override a valid HIGH conviction TREND entry solely because a recent lesson was cautionary.
+
+#### 7d. Portfolio Trade Statistics (section 4d)
+Section 4d summarizes aggregate performance from the last 5 closed trades: overall win rate, win rate by niche, win rate by entry pattern, and average alpha vs sector ETF. Use this data to:
+- Identify which niches and patterns are generating edge in THIS portfolio specifically (may differ from historical EV in 7b due to sample size and market regime).
+- If a pattern shows 0% win rate in your closed trades, treat it as a hard negative EV signal regardless of what 7b shows — your live experience overrides the historical prior.
+- Fewer than 5 trades per category makes the stats directional, not definitive. Weight them accordingly.
 
 ## POSITION SIZING RULES
 
@@ -594,6 +672,9 @@ ${formatPatternPerf(ctx.patternPerfMap)}
 
 ### 4b. Recent Trade Lessons (last 5 closed trades)
 ${formatTradeLessons(ctx.recentTradeLessons)}
+
+### 4d. Portfolio Trade Statistics (last ${ctx.recentTradeLessons.length} closed trades)
+${formatTradeStats(ctx.recentTradeLessons)}
 
 ### 4c. Correlation Flags (candidates with >0.70 correlation to open positions)
 ${Object.keys(ctx.correlationFlags).length > 0

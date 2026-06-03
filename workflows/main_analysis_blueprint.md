@@ -264,14 +264,30 @@ ORDER BY pattern_type;
 ```
 
 ### [10] Load Trade Lessons
+> **Source**: `stocks.trades WHERE status='CLOSED'` (not `trade_lessons` — deprecated 2026-06-03).
+> `generated_at` aliased from `updated_at`. Added 2026-06-03: `hold_days`, `entry_price`, `exit_price`, `entry_thesis`, `etf_return`, `entry_specialist_confidence`, `entry_effective_confidence`, `size_usd`.
+
 ```sql
-SELECT ticker, niche, direction, outcome, pnl_pct, entry_pattern,
-       exit_reason, sector_accuracy, stock_selection_quality,
-       entry_timing, exit_timing, key_lesson, pattern_tag,
-       alternative_picks, generated_at
-FROM stocks.trade_lessons
-ORDER BY generated_at DESC
-LIMIT 5;
+SELECT
+  ticker, niche, direction, outcome,
+  pnl_pct::float          AS pnl_pct,
+  pnl_usd::float          AS pnl_usd,
+  hold_days,
+  entry_pattern, exit_reason,
+  sector_accuracy, entry_timing, exit_timing,
+  key_lesson, pattern_tag,
+  entry_price::float      AS entry_price,
+  exit_price::float       AS exit_price,
+  entry_thesis,
+  etf_return::float       AS etf_return,
+  entry_specialist_confidence::float  AS entry_specialist_confidence,
+  entry_effective_confidence::float   AS entry_effective_confidence,
+  size_usd::float         AS size_usd,
+  updated_at AS generated_at
+FROM stocks.trades
+WHERE status = 'CLOSED'
+ORDER BY updated_at DESC
+LIMIT 5
 ```
 
 ### [11] Load Watchlist

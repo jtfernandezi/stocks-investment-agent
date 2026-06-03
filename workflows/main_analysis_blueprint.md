@@ -343,21 +343,24 @@ Node name: **`Parse & Save All Signals`** (exact — referenced by `06_build_orc
 - Set `alwaysOutputData: true` — an UPSERT without `RETURNING` returns 0 rows; without this flag n8n stops execution
 ```sql
 INSERT INTO stocks.specialist_signals
-  (niche, session, direction, conviction, confidence, materiality, top_picks, summary, raw_json)
+  (niche, session, direction, conviction, confidence, materiality, top_picks, summary,
+   raw_json, effective_confidence, scaling_factor)
 VALUES (
   '{{ $json.niche }}', '{{ $json.session }}', '{{ $json.direction }}',
   '{{ $json.conviction }}', {{ $json.confidence }}, '{{ $json.materiality }}',
-  '{{ $json.top_picks }}'::jsonb, '{{ $json.summary }}', '{{ $json.raw_json }}'::jsonb
+  '{{ $json.top_picks }}'::jsonb, '{{ $json.summary }}', '{{ $json.raw_json }}'::jsonb,
+  {{ $json.effective_confidence }}, {{ $json.scaling_factor }}
 )
 ON CONFLICT (niche, session) DO UPDATE SET
-  direction   = EXCLUDED.direction,
-  conviction  = EXCLUDED.conviction,
-  confidence  = EXCLUDED.confidence,
-  materiality = EXCLUDED.materiality,
-  top_picks   = EXCLUDED.top_picks,
-  summary     = EXCLUDED.summary,
-  raw_json    = EXCLUDED.raw_json,
-  created_at  = NOW();
+  direction            = EXCLUDED.direction,
+  conviction           = EXCLUDED.conviction,
+  confidence           = EXCLUDED.confidence,
+  materiality          = EXCLUDED.materiality,
+  top_picks            = EXCLUDED.top_picks,
+  summary              = EXCLUDED.summary,
+  raw_json             = EXCLUDED.raw_json,
+  effective_confidence = EXCLUDED.effective_confidence,
+  scaling_factor       = EXCLUDED.scaling_factor;
 ```
 
 > The `UNIQUE (niche, session)` constraint ensures exactly 1 canonical row per niche/session. The upsert overwrites stale data on re-runs.
@@ -477,7 +480,8 @@ ON CONFLICT DO NOTHING;
 ---
 
 ### [27a] Build Watchlist SQL (inline Code)
-Reads `$("Process Post-Trade").first().json.watchlist` and builds DELETE + INSERT SQL:
+Reads `$("Process Post-Trade").first().json.watchlist` and builds DELETE + INSERT SQL.
+Each watchlist item comes from `09_process_post_trade.js` with fields: `ticker`, `niche`, `direction`, `reason`, `trigger_condition` (from orchestrator `trigger` field), `session_id`.
 ```javascript
 const input = $("Process Post-Trade").first().json;
 const wl = input.watchlist || [];
@@ -485,9 +489,12 @@ const esc = s => (s||'').replace(/'/g,"''");
 let sql = "DELETE FROM stocks.watchlist;";
 if (wl.length > 0) {
   const vals = wl.map(w =>
-    `('${esc(w.ticker)}','${esc(w.niche)}','${esc(w.direction)}','${esc(w.reason||'').substring(0,500)}')`
+    `('${esc(w.ticker)}','${esc(w.niche)}','${esc(w.direction)}',` +
+    `'${esc(w.reason||'').substring(0,500)}',` +
+    `'${esc(w.trigger_condition||'').substring(0,500)}',` +
+    `'${esc(w.session_id||'')}')`
   ).join(',');
-  sql += ` INSERT INTO stocks.watchlist (ticker,niche,direction,reason) VALUES ${vals};`;
+  sql += ` INSERT INTO stocks.watchlist (ticker,niche,direction,reason,trigger_condition,session_id) VALUES ${vals};`;
 }
 return [{json:{watchlist_sql:sql}}];
 ```

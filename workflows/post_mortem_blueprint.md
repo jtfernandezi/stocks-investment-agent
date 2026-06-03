@@ -160,27 +160,30 @@ DO UPDATE SET
 
 ### [8] Update Pattern Performance
 
+> **Source**: reads from `stocks.trades WHERE status='CLOSED'` (not `trade_lessons` — deprecated).
+> `niche` column was dropped from `pattern_performance` (2026-06-03) — was always `'ALL'`, never used for per-niche breakdown. UNIQUE constraint is now on `(pattern_type)` only.
+
 ```sql
-INSERT INTO stocks.pattern_performance (
-  pattern_type, niche, total_trades, winning_trades, win_rate,
-  avg_win_pct, avg_loss_pct, expected_value)
+INSERT INTO stocks.pattern_performance
+  (pattern_type, total_trades, winning_trades, win_rate, avg_win_pct, avg_loss_pct, expected_value)
 SELECT
-  entry_pattern AS pattern_type,
-  'ALL' AS niche,
-  COUNT(*) AS total_trades,
-  COUNT(*) FILTER (WHERE outcome = 'WIN') AS winning_trades,
-  AVG(CASE WHEN outcome = 'WIN' THEN 1.0 ELSE 0.0 END) AS win_rate,
-  AVG(CASE WHEN outcome = 'WIN'  THEN pnl_pct ELSE NULL END) AS avg_win_pct,
-  AVG(CASE WHEN outcome = 'LOSS' THEN pnl_pct ELSE NULL END) AS avg_loss_pct,
-  AVG(CASE WHEN outcome = 'WIN'  THEN 1.0 ELSE 0.0 END) *
-    AVG(CASE WHEN outcome = 'WIN'  THEN pnl_pct ELSE NULL END) +
-  AVG(CASE WHEN outcome = 'LOSS' THEN 1.0 ELSE 0.0 END) *
-    AVG(CASE WHEN outcome = 'LOSS' THEN pnl_pct ELSE NULL END) AS expected_value
-FROM stocks.trade_lessons
-WHERE exit_date >= CURRENT_DATE - INTERVAL '90 days'
+  entry_pattern,
+  COUNT(*),
+  COUNT(*) FILTER (WHERE outcome = 'WIN'),
+  ROUND(AVG(CASE WHEN outcome = 'WIN' THEN 1.0 ELSE 0.0 END)::numeric, 4),
+  ROUND(AVG(CASE WHEN outcome = 'WIN'  THEN pnl_pct ELSE NULL END)::numeric, 4),
+  ROUND(AVG(CASE WHEN outcome = 'LOSS' THEN pnl_pct ELSE NULL END)::numeric, 4),
+  ROUND((
+    AVG(CASE WHEN outcome = 'WIN'  THEN 1.0 ELSE 0.0 END)
+      * COALESCE(AVG(CASE WHEN outcome = 'WIN'  THEN pnl_pct ELSE NULL END), 0)
+    + AVG(CASE WHEN outcome = 'LOSS' THEN 1.0 ELSE 0.0 END)
+      * COALESCE(AVG(CASE WHEN outcome = 'LOSS' THEN pnl_pct ELSE NULL END), 0)
+  )::numeric, 4)
+FROM stocks.trades
+WHERE status = 'CLOSED'
+  AND exit_date >= CURRENT_DATE - INTERVAL '90 days'
 GROUP BY entry_pattern
-ON CONFLICT (pattern_type, niche)
-DO UPDATE SET
+ON CONFLICT (pattern_type) DO UPDATE SET
   total_trades   = EXCLUDED.total_trades,
   winning_trades = EXCLUDED.winning_trades,
   win_rate       = EXCLUDED.win_rate,

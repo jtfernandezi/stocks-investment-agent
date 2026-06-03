@@ -72,6 +72,8 @@ return inputs.map(item => {
       })),
       summary:  sqlEsc(parsedSignal.summary),
       raw_json: sqlEsc(JSON.stringify(parsedSignal)),
+      effective_confidence,
+      scaling_factor,
 
       // For orchestrator consumption
       effective_confidence,

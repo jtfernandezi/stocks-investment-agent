@@ -46,12 +46,20 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
       ↓
 [10] Parse Flip Response         (Code: watchdog_parse_flip.js)
       ↓
-[11] Thesis Flip Detected?       (IF: $json.flips_detected ? 'true' : 'false' equals 'true')
-      ↓ TRUE                         ↓ FALSE
-[12] Trigger Main v2             [N3] No Flips - Done (NoOp)
-     (Execute Workflow — "When Called by Watchdog" entry point)
-      ↓
-[N4] Watchdog Done (NoOp)
+      ├─ [11] Thesis Flip Detected?  (IF: $json.flips_detected ? 'true' : 'false' equals 'true')
+      │         ↓ TRUE                         ↓ FALSE
+      │  [12] Trigger Main v2             [N3] No Flips - Done (NoOp)
+      │       (Execute Workflow)
+      │         ↓
+      │   [N4] Watchdog Done (NoOp)
+      │
+      └─ [13] IF Contradictions?     (IF: $json.contradictions_detected ? 'true' : 'false' equals 'true')
+                ↓ TRUE                         ↓ FALSE
+    [14a] Build Contradiction Email   [N5] No Contradictions - Done (NoOp)
+    [14b] Split Contradiction Items
+          ↓                   ↓
+  [15a] Send Contradiction  [15b] Store Contradiction Events
+        Alert (Gmail)             (Postgres INSERT → stocks.watchdog_events)
 ```
 
 > **Node naming note**: `watchdog_build_news_prompt.js` reads positions via `$("Has Open Positions?")` — this name must match exactly.
@@ -138,9 +146,12 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
 
 ### [10] Parse Flip Response
 - Node type: Code (`watchdog_parse_flip.js`)
-- Flip threshold: `thesis_intact === false AND confidence ≥ 0.60 AND materiality !== 'LOW'`
-- Output on flips: `{ flips_detected: true, flips, flip_count, trigger_reason, session_type: 'watchdog_flip' }`
-- Output on no flips: `{ flips_detected: false, checked_at, llm_summary }`
+- Flip threshold: `thesis_intact === false AND confidence ≥ 0.60 AND materiality !== 'LOW' AND news_assessment !== 'CONFIRMS'`
+- Contradiction detection: `thesis_intact === false AND news_assessment === 'CONFIRMS'` — logical impossibility, suppressed from flip triggering
+- Each contradiction object includes: `ticker`, `side`, `direction`, `news_assessment`, `key_headline`, `reasoning`, `confidence` (LLM's confidence on that assessment)
+- `flip_triggered: flips.length > 0` stamped onto every contradiction before output (so the DB knows whether a contradiction co-occurred with a flip in the same run)
+- Output on flips: `{ flips_detected: true, flips, flip_count, contradictions, contradictions_detected, trigger_reason, session_type: 'watchdog_flip' }`
+- Output on no flips: `{ flips_detected: false, contradictions, contradictions_detected, checked_at, llm_summary }`
 
 ---
 
@@ -161,11 +172,54 @@ Both are checked via IF nodes that route to named terminal (NoOp) nodes — alwa
 
 ---
 
+### [13] IF Contradictions?
+- Node type: IF
+- Condition: `{{ $json.contradictions_detected ? 'true' : 'false' }}` equals `true`
+- TRUE → Build Contradiction Email + Split Contradiction Items (parallel)
+- FALSE → No Contradictions - Done (NoOp)
+
+---
+
+### [14a] Build Contradiction Email
+- Node type: Code (inline, not a local file)
+- Formats `$json.contradictions` into a readable email subject + body
+- Output: `{ subject, body }`
+
+---
+
+### [14b] Split Contradiction Items
+- Node type: Code (inline, not a local file)
+- Splits `$json.contradictions` array into one item per contradiction for the Postgres INSERT
+- Each item: `{ ticker, side, direction, news_assessment, key_headline, reasoning, confidence, flip_triggered, detected_at }`
+
+---
+
+### [15a] Send Contradiction Alert
+- Node type: Gmail
+- Sends the formatted email from [14a] to `<ALERT_EMAIL>`
+
+---
+
+### [15b] Store Contradiction Events
+- Node type: Postgres — Execute Query
+```sql
+INSERT INTO stocks.watchdog_events
+  (event_type, ticker, side, direction, news_assessment, key_headline,
+   reasoning, detected_at, flip_triggered, watchdog_confidence)
+VALUES
+  ('contradiction', '{{ $json.ticker }}', '{{ $json.side }}', '{{ $json.direction }}',
+   '{{ $json.news_assessment }}', '{{ $json.key_headline }}', '{{ $json.reasoning }}',
+   '{{ $json.detected_at }}', {{ $json.flip_triggered }}, {{ $json.confidence }})
+```
+
+---
+
 ### Terminal (NoOp) nodes
-All four terminal nodes are `n8n-nodes-base.noOp`. Name them descriptively:
+All five terminal nodes are `n8n-nodes-base.noOp`. Name them descriptively:
 - `Market Closed - Done`
 - `No Positions - Done`
 - `No Flips - Done`
+- `No Contradictions - Done`
 - `Watchdog Done`
 
 ---

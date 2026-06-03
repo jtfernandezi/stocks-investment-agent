@@ -35,12 +35,13 @@ export async function GET() {
       sql`
         WITH raw AS (
           SELECT
-            action->>'ticker'                         AS ticker,
-            action->>'action'                         AS action_type,
-            action->>'thesis'                         AS thesis,
-            action->>'conviction'                     AS conviction,
-            (action->>'stop_pct_used')::numeric       AS stop_pct_used,
-            (action->>'effective_confidence')::numeric AS effective_confidence,
+            action->>'ticker'                          AS ticker,
+            action->>'action'                          AS action_type,
+            action->>'thesis'                          AS thesis,
+            action->>'conviction'                      AS conviction,
+            (action->>'stop_pct_used')::numeric        AS stop_pct_used,
+            (action->>'effective_confidence')::numeric  AS effective_confidence,
+            (action->>'confidence')::numeric            AS specialist_confidence,
             ps.created_at
           FROM stocks.portfolio_snapshots ps
           CROSS JOIN LATERAL jsonb_array_elements(ps.raw_json->'portfolio_actions') AS action
@@ -49,8 +50,7 @@ export async function GET() {
         )
         SELECT DISTINCT ON (ticker)
           ticker, action_type, thesis, conviction, stop_pct_used, effective_confidence,
-          (action->>'confidence')::numeric AS specialist_confidence,
-          created_at
+          specialist_confidence, created_at
         FROM raw
         ORDER BY ticker, created_at DESC
       `,

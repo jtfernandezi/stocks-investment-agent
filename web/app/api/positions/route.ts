@@ -48,7 +48,9 @@ export async function GET() {
             AND action->>'ticker' IS NOT NULL
         )
         SELECT DISTINCT ON (ticker)
-          ticker, action_type, thesis, conviction, stop_pct_used, effective_confidence, created_at
+          ticker, action_type, thesis, conviction, stop_pct_used, effective_confidence,
+          (action->>'confidence')::numeric AS specialist_confidence,
+          created_at
         FROM raw
         ORDER BY ticker, created_at DESC
       `,
@@ -101,27 +103,32 @@ export async function GET() {
           ? (side === 'LONG' ? entryPrice * (1 - stopPct / 100) : entryPrice * (1 + stopPct / 100))
           : null;
 
+      const entryAt = entry?.created_at ? new Date(String(entry.created_at)) : null;
+      const holdDays = entryAt ? Math.floor((Date.now() - entryAt.getTime()) / 86400000) : null;
+
       return {
-        ticker:              p.symbol,
+        ticker:               p.symbol,
         side,
-        shares:              parseFloat(p.qty),
+        shares:               parseFloat(p.qty),
         entryPrice,
         currentPrice,
-        marketValue:         parseFloat(p.market_value),
-        costBasis:           parseFloat(p.cost_basis),
-        pnl:                 parseFloat(p.unrealized_pl),
-        pnlPct:              parseFloat(p.unrealized_plpc) * 100,
-        changeToday:         parseFloat(p.change_today) * 100,
-        niche:               TICKER_NICHE[p.symbol] ?? null,
-        nicheDisplay:        NICHE_DISPLAY[TICKER_NICHE[p.symbol]] ?? '—',
-        thesis:              entry?.thesis ?? null,
-        conviction:          entry?.conviction ?? null,
-        effectiveConfidence: entry?.effective_confidence != null ? parseFloat(String(entry.effective_confidence)) : null,
+        marketValue:          parseFloat(p.market_value),
+        costBasis:            parseFloat(p.cost_basis),
+        pnl:                  parseFloat(p.unrealized_pl),
+        pnlPct:               parseFloat(p.unrealized_plpc) * 100,
+        changeToday:          parseFloat(p.change_today) * 100,
+        niche:                TICKER_NICHE[p.symbol] ?? null,
+        nicheDisplay:         NICHE_DISPLAY[TICKER_NICHE[p.symbol]] ?? '—',
+        thesis:               entry?.thesis ?? null,
+        conviction:           entry?.conviction ?? null,
+        effectiveConfidence:  entry?.effective_confidence != null ? parseFloat(String(entry.effective_confidence)) : null,
+        specialistConfidence: entry?.specialist_confidence != null ? parseFloat(String(entry.specialist_confidence)) : null,
+        holdDays,
         stopPct,
         stopPrice,
-        distToStop:          stopPrice != null ? Math.abs(currentPrice - stopPrice) : null,
-        thesisIntact:        status?.thesis_intact ?? null,
-        stopProximity:       status?.stop_proximity ?? null,
+        distToStop:           stopPrice != null ? Math.abs(currentPrice - stopPrice) : null,
+        thesisIntact:         status?.thesis_intact ?? null,
+        stopProximity:        status?.stop_proximity ?? null,
       };
     });
 

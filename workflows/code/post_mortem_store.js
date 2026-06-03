@@ -61,6 +61,12 @@ const final = {
   pattern_tag:              parsed.pattern_tag              || 'noise_entry',
   entry_specialist_confidence: parsed.entry_specialist_confidence ?? inputCtx.entry_specialist_confidence ?? 0,
   entry_effective_confidence:  parsed.entry_effective_confidence  ?? inputCtx.entry_effective_confidence  ?? 0,
+  // New trade_lessons columns
+  entry_price:    inputCtx.entry_price  ?? null,
+  exit_price:     inputCtx.exit_price   ?? null,
+  qty:            inputCtx.qty          ?? null,
+  entry_thesis:   sqlEsc(inputCtx.entry_thesis || ''),
+  etf_return:     inputCtx.etf_return   ?? null,
 };
 
 return [{ json: final }];

@@ -16,15 +16,19 @@ interface SnapPoint  { date: string; portfolio: number; spy: number; }
 interface AccountData { equity: number; long_market_value: number; short_market_value: number; }
 interface OpenPos {
   ticker: string; side: string; pnl: number; pnlPct: number;
-  entryPrice: number; currentPrice: number; costBasis: number;
-  nicheDisplay: string; thesis: string; effectiveConfidence: number; stopPct: number;
+  entryPrice: number; currentPrice: number; costBasis: number; shares: number;
+  nicheDisplay: string; thesis: string | null;
+  effectiveConfidence: number | null; specialistConfidence: number | null;
+  holdDays: number | null; stopPct: number;
 }
 interface ClosedTrade {
   ticker: string; niche: string; direction: string; outcome: string;
   pnl_pct: number; pnl_usd: number; hold_days: number;
   entry_date: string; exit_date: string; exit_reason: string; key_lesson: string;
   sector_accuracy: string; entry_timing: string; exit_timing: string;
-  entry_effective_confidence: number;
+  entry_specialist_confidence: number | null; entry_effective_confidence: number | null;
+  entry_price: number | null; exit_price: number | null;
+  qty: number | null; entry_thesis: string | null; etf_return: number | null;
 }
 
 // ── Math helpers ───────────────────────────────────────────────────────────────
@@ -42,10 +46,14 @@ const fmtPct = (v: number, decimals = 2) => `${v >= 0 ? '+' : ''}${v.toFixed(dec
 
 interface TradeRow {
   id: string; ticker: string; direction: 'LONG' | 'SHORT';
-  date: string; holdDays: number | null; pnl: number; pnlPct: number;
+  qty: number | null; entryPrice: number | null; closePrice: number | null;
+  holdDays: number | null; pnl: number; pnlPct: number;
   status: 'Open' | 'Closed'; outcome?: string;
-  entryPrice?: number; currentPrice?: number; thesis?: string; confidence?: number;
-  exitReason?: string; keyLesson?: string;
+  costBasis?: number;
+  specialistConf?: number | null; effectiveConf?: number | null;
+  thesis?: string | null;
+  exitReason?: string; keyLesson?: string; entryThesis?: string | null;
+  etfReturn?: number | null;
   sectorAccuracy?: string; entryTiming?: string; exitTiming?: string;
 }
 
@@ -59,6 +67,8 @@ function qualityColor(q?: string) {
 function ExpandableTradeRow({ t }: { t: TradeRow }) {
   const [open, setOpen] = useState(false);
   const up = t.pnl >= 0;
+  const fmtConf = (v: number | null | undefined) => v != null ? `${(v * 100).toFixed(0)}%` : '—';
+  const fmtPrice = (v: number | null | undefined) => v != null ? `$${v.toFixed(2)}` : '—';
 
   return (
     <>
@@ -66,26 +76,34 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
         className="border-b border-rim/40 transition-colors cursor-pointer hover:bg-ink/[0.03]"
         onClick={() => setOpen(o => !o)}
       >
-        <td className="px-3 md:px-4 py-3.5 w-4">
+        <td className="px-3 py-3.5 w-4">
           {open ? <ChevronDown size={13} className="text-dim" /> : <ChevronRight size={13} className="text-dim" />}
         </td>
-        <td className="hidden md:table-cell px-3 md:px-4 py-3.5 font-mono text-xs text-dim">{t.date}</td>
-        <td className="px-3 md:px-4 py-3.5 font-semibold text-ink text-sm">{t.ticker}</td>
-        <td className="px-3 md:px-4 py-3.5">
+        <td className="px-3 py-3.5 font-semibold text-ink text-sm">{t.ticker}</td>
+        <td className="px-3 py-3.5">
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
             t.direction === 'LONG' ? 'bg-gain/10 text-gain' : 'bg-loss/10 text-loss'
           }`}>{t.direction}</span>
         </td>
-        <td className="hidden md:table-cell px-3 md:px-4 py-3.5 font-mono text-xs text-dim">
+        <td className="hidden md:table-cell px-3 py-3.5 font-mono text-xs text-dim text-right">
+          {t.qty != null ? t.qty.toLocaleString() : '—'}
+        </td>
+        <td className="hidden md:table-cell px-3 py-3.5 font-mono text-xs text-dim text-right">
+          {fmtPrice(t.entryPrice)}
+        </td>
+        <td className="px-3 py-3.5 font-mono text-xs text-dim text-right">
+          {fmtPrice(t.closePrice)}
+        </td>
+        <td className="hidden md:table-cell px-3 py-3.5 font-mono text-xs text-dim text-right">
           {t.holdDays != null ? `${t.holdDays}d` : '—'}
         </td>
-        <td className={`px-3 md:px-4 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+        <td className={`px-3 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
           {up ? '+' : '−'}{fmt$(t.pnl)}
         </td>
-        <td className={`px-3 md:px-4 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
+        <td className={`px-3 py-3.5 font-mono text-sm font-semibold ${up ? 'text-gain' : 'text-loss'}`}>
           {fmtPct(t.pnlPct)}
         </td>
-        <td className="px-3 md:px-4 py-3.5">
+        <td className="px-3 py-3.5">
           <span className={`text-xs px-2 py-0.5 rounded-full ${
             t.status === 'Open' ? 'bg-accent/10 text-accent' : 'bg-dim/10 text-dim'
           }`}>{t.status}</span>
@@ -94,26 +112,25 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
 
       {open && (
         <tr className="border-b border-rim/40 bg-surface/60">
-          <td colSpan={8} className="px-4 md:px-8 py-4 md:py-5">
+          <td colSpan={10} className="px-4 md:px-8 py-4 md:py-5">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+              {/* Left: thesis + exit details */}
               <div className="lg:col-span-2 space-y-4">
-                {t.status === 'Open' && t.thesis && (
+                {(t.status === 'Open' ? t.thesis : t.entryThesis) && (
                   <div>
                     <p className="text-xs text-dim uppercase tracking-wider font-medium mb-2">Entry Thesis</p>
-                    <p className="text-sm text-ink leading-relaxed">{t.thesis}</p>
-                  </div>
-                )}
-                {t.status === 'Open' && t.entryPrice != null && (
-                  <div className="flex gap-8 text-xs">
-                    <div><span className="text-dim">Entry Price</span><p className="font-mono text-ink mt-0.5">${t.entryPrice.toFixed(2)}</p></div>
-                    <div><span className="text-dim">Current Price</span><p className="font-mono text-ink mt-0.5">${t.currentPrice?.toFixed(2)}</p></div>
-                    <div><span className="text-dim">Confidence</span><p className="font-mono text-ink mt-0.5">{t.confidence != null ? (t.confidence * 100).toFixed(0) + '%' : '—'}</p></div>
+                    <p className="text-sm text-ink leading-relaxed">
+                      {t.status === 'Open' ? t.thesis : t.entryThesis}
+                    </p>
                   </div>
                 )}
                 {t.status === 'Closed' && t.exitReason && (
                   <div>
                     <p className="text-xs text-dim uppercase tracking-wider font-medium mb-2">Exit Reasoning</p>
-                    <p className="text-sm text-ink leading-relaxed">{t.exitReason}</p>
+                    <p className="text-sm text-ink leading-relaxed capitalize">
+                      {t.exitReason.replace(/_/g, ' ')}
+                    </p>
                   </div>
                 )}
                 {t.keyLesson && (
@@ -122,8 +139,39 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
                     <p className="text-xs text-dim leading-relaxed">{t.keyLesson}</p>
                   </div>
                 )}
+
+                {/* Stats row */}
+                <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs pt-1 border-t border-rim/20">
+                  {t.costBasis != null && t.costBasis > 0 && (
+                    <div>
+                      <span className="text-dim">Size</span>
+                      <p className="font-mono text-ink mt-0.5">{fmt$(t.costBasis)}</p>
+                    </div>
+                  )}
+                  {t.specialistConf != null && (
+                    <div>
+                      <span className="text-dim">Specialist Conf</span>
+                      <p className="font-mono text-ink mt-0.5">{fmtConf(t.specialistConf)}</p>
+                    </div>
+                  )}
+                  {t.effectiveConf != null && (
+                    <div>
+                      <span className="text-dim">Effective Conf</span>
+                      <p className="font-mono text-ink mt-0.5">{fmtConf(t.effectiveConf)}</p>
+                    </div>
+                  )}
+                  {t.status === 'Closed' && t.etfReturn != null && (
+                    <div>
+                      <span className="text-dim">ETF During Hold</span>
+                      <p className={`font-mono mt-0.5 ${t.etfReturn >= 0 ? 'text-gain' : 'text-loss'}`}>
+                        {fmtPct(t.etfReturn)}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {/* Right: attribution / open placeholder */}
               {t.status === 'Closed' ? (
                 <div>
                   <p className="text-xs text-dim uppercase tracking-wider font-medium mb-3">Attribution Quality</p>
@@ -344,36 +392,49 @@ export default function PerformancePage() {
   // ── Unified trade history ────────────────────────────────────────────────────
   const tradeRows: TradeRow[] = [
     ...openPos.map((p, i): TradeRow => ({
-      id:          `open-${p.ticker}-${i}`,
-      ticker:      p.ticker,
-      direction:   p.side.toLowerCase() === 'long' ? 'LONG' : 'SHORT',
-      date:        '—',
-      holdDays:    null,
-      pnl:         p.pnl,
-      pnlPct:      p.pnlPct,
-      status:      'Open',
-      entryPrice:  p.entryPrice,
-      currentPrice: p.currentPrice,
-      thesis:      p.thesis,
-      confidence:  p.effectiveConfidence,
+      id:             `open-${p.ticker}-${i}`,
+      ticker:         p.ticker,
+      direction:      p.side.toLowerCase() === 'long' ? 'LONG' : 'SHORT',
+      qty:            p.shares,
+      entryPrice:     p.entryPrice,
+      closePrice:     p.currentPrice,
+      holdDays:       p.holdDays,
+      pnl:            p.pnl,
+      pnlPct:         p.pnlPct,
+      status:         'Open',
+      costBasis:      p.costBasis,
+      specialistConf: p.specialistConfidence,
+      effectiveConf:  p.effectiveConfidence,
+      thesis:         p.thesis,
     })),
-    ...closedTrades.map((t): TradeRow => ({
-      id:          `closed-${t.ticker}-${t.exit_date}`,
-      ticker:      t.ticker,
-      direction:   t.direction?.toLowerCase() === 'long' ? 'LONG' : 'SHORT',
-      date:        t.exit_date ? new Date(t.exit_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—',
-      holdDays:    t.hold_days,
-      pnl:         t.pnl_usd,
-      pnlPct:      t.pnl_pct,
-      status:      'Closed',
-      outcome:     t.outcome,
-      exitReason:  t.exit_reason,
-      keyLesson:   t.key_lesson,
-      sectorAccuracy: t.sector_accuracy,
-      entryTiming:    t.entry_timing,
-      exitTiming:     t.exit_timing,
-      confidence:  t.entry_effective_confidence,
-    })),
+    ...closedTrades.map((t): TradeRow => {
+      const size = t.entry_price && t.qty
+        ? t.entry_price * t.qty
+        : t.pnl_pct !== 0 ? Math.abs(t.pnl_usd / (t.pnl_pct / 100)) : 0;
+      return {
+        id:             `closed-${t.ticker}-${t.exit_date}`,
+        ticker:         t.ticker,
+        direction:      t.direction?.toLowerCase() === 'long' ? 'LONG' : 'SHORT',
+        qty:            t.qty,
+        entryPrice:     t.entry_price,
+        closePrice:     t.exit_price,
+        holdDays:       t.hold_days,
+        pnl:            t.pnl_usd,
+        pnlPct:         t.pnl_pct,
+        status:         'Closed',
+        outcome:        t.outcome,
+        costBasis:      size,
+        specialistConf: t.entry_specialist_confidence,
+        effectiveConf:  t.entry_effective_confidence,
+        entryThesis:    t.entry_thesis,
+        exitReason:     t.exit_reason,
+        keyLesson:      t.key_lesson,
+        etfReturn:      t.etf_return,
+        sectorAccuracy: t.sector_accuracy,
+        entryTiming:    t.entry_timing,
+        exitTiming:     t.exit_timing,
+      };
+    }),
   ];
 
   // ── Metric cards data ────────────────────────────────────────────────────────
@@ -724,17 +785,19 @@ export default function PerformancePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-rim">
-                  <th className="px-4 py-3 w-4" />
+                  <th className="px-3 py-3 w-4" />
                   {[
-                    { label: 'Date',      hide: true  },
-                    { label: 'Ticker',    hide: false },
-                    { label: 'Direction', hide: false },
-                    { label: 'Hold',      hide: true  },
-                    { label: 'P&L',       hide: false },
-                    { label: 'P&L %',     hide: false },
-                    { label: 'Status',    hide: false },
-                  ].map(({ label, hide }) => (
-                    <th key={label} className={`text-left text-xs text-dim font-medium uppercase tracking-wider px-3 md:px-4 py-3 whitespace-nowrap ${hide ? 'hidden md:table-cell' : ''}`}>{label}</th>
+                    { label: 'Ticker',    hide: false, align: 'left'  },
+                    { label: 'Direction', hide: false, align: 'left'  },
+                    { label: 'Qty',       hide: true,  align: 'right' },
+                    { label: 'Open',      hide: true,  align: 'right' },
+                    { label: 'Close',     hide: false, align: 'right' },
+                    { label: 'Hold',      hide: true,  align: 'right' },
+                    { label: 'P&L',       hide: false, align: 'left'  },
+                    { label: 'P&L %',     hide: false, align: 'left'  },
+                    { label: 'Status',    hide: false, align: 'left'  },
+                  ].map(({ label, hide, align }) => (
+                    <th key={label} className={`text-${align} text-xs text-dim font-medium uppercase tracking-wider px-3 py-3 whitespace-nowrap ${hide ? 'hidden md:table-cell' : ''}`}>{label}</th>
                   ))}
                 </tr>
               </thead>

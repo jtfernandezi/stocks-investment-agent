@@ -249,5 +249,12 @@ return [{
     exit_reason:       webhook.exit_reason,
     entry_specialist_confidence: webhook.entry_specialist_confidence,
     entry_effective_confidence:  webhook.entry_effective_confidence,
+    // New: for trade_lessons columns
+    entry_price:       entryPrice || null,
+    exit_price:        exitPrice  || null,
+    entry_thesis:      webhook.thesis || null,
+    etf_return:        sectorEtfReturn,
+    // Prefer qty from position_metadata (written at BUY/SHORT execution); payload as fallback
+    qty:               posEntry.qty ?? webhook.qty ?? null,
   }
 }];

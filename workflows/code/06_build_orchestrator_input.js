@@ -516,7 +516,11 @@ After reviewing longs, explicitly assess BEARISH signals:
 - Acceptable cash reasons: no valid HIGH conviction signal, sector caps full, short cap maxed, 3+ penalties on every candidate. State which applies.
 
 ### Step 5 — Watchlist Update
-Add: MEDIUM conviction signals below threshold, HIGH conviction signals blocked by hard limits, stocks with earnings ≤3 days (revisit after), sectors at 2/5 BULLISH (watch for confirmation).
+Only add stocks where you have a directional view. Watchlist = pending entry, not general monitoring.
+
+Add (BULLISH direction): MEDIUM conviction long candidates below threshold, HIGH conviction longs blocked by hard limits, stocks with earnings ≤3 days you intend to buy after, sectors at 2/5 BULLISH watching for TREND confirmation.
+Add (BEARISH direction): same logic for short candidates.
+Do NOT add: stocks where your view is NEUTRAL, stocks you have no entry intent for, stocks already held.
 
 ## MARKET HOURS RULE
 If is_market_open is false: output portfolio_actions as []. You may still update watchlist and write portfolio_review and orchestrator_summary.
@@ -576,7 +580,7 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
     {
       "ticker": "AMAT",
       "niche": "semiconductors",
-      "direction": "long" | "short",
+      "direction": "BULLISH" | "BEARISH",
       "reason": "Why watching",
       "trigger": "What specific condition needs to be met to enter"
     }

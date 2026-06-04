@@ -19,7 +19,7 @@ interface OpenPos {
   entryPrice: number; currentPrice: number; costBasis: number; shares: number;
   nicheDisplay: string; thesis: string | null;
   effectiveConfidence: number | null; specialistConfidence: number | null;
-  holdDays: number | null; stopPct: number;
+  holdDays: number | null; entryDate: string | null; stopPct: number;
 }
 interface ClosedTrade {
   ticker: string; niche: string; direction: string; outcome: string;
@@ -52,16 +52,24 @@ interface TradeRow {
   costBasis?: number;
   specialistConf?: number | null; effectiveConf?: number | null;
   thesis?: string | null;
+  entryDate?: string | null; exitDate?: string | null;
   exitReason?: string; keyLesson?: string; entryThesis?: string | null;
   etfReturn?: number | null;
   sectorAccuracy?: string; entryTiming?: string; exitTiming?: string;
 }
 
-function qualityColor(q?: string) {
-  if (!q) return 'text-dim';
-  if (q === 'OPTIMAL' || q === 'STRONG')   return 'text-gain';
-  if (q === 'SUBOPTIMAL' || q === 'WEAK')  return 'text-loss';
-  return 'text-ink';
+const fmtDate = (s: string | null | undefined) => {
+  if (!s) return '—';
+  const d = new Date(s.length === 10 ? s + 'T12:00:00Z' : s);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+};
+
+function attrBadge(v?: string) {
+  if (!v) return 'text-dim bg-dim/10';
+  if (v === 'CORRECT' || v === 'OPTIMAL')   return 'text-gain bg-gain/10';
+  if (v === 'INCORRECT' || v === 'LATE')    return 'text-loss bg-loss/10';
+  if (v === 'EARLY')                        return 'text-yellow-400 bg-yellow-400/10';
+  return 'text-dim bg-dim/10';
 }
 
 function ExpandableTradeRow({ t }: { t: TradeRow }) {
@@ -112,11 +120,65 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
 
       {open && (
         <tr className="border-b border-rim/40 bg-surface/60">
-          <td colSpan={10} className="px-4 md:px-8 py-4 md:py-5">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <td colSpan={10} className="px-0 py-0">
 
-              {/* Left: thesis + exit details */}
-              <div className="lg:col-span-2 space-y-4">
+            {/* ── Timeline strip ─────────────────────────────────────────── */}
+            <div className="px-6 py-3 bg-ink/[0.04] border-b border-rim/20 flex flex-wrap items-center gap-x-6 gap-y-3">
+              {/* Entry → Exit arc */}
+              <div className="flex items-center gap-3">
+                <div className="text-center">
+                  <p className="text-[10px] text-dim uppercase tracking-wider">Entry</p>
+                  <p className="font-mono text-xs text-ink font-medium mt-0.5">{t.entryDate ?? '—'}</p>
+                  <p className="font-mono text-xs text-dim">{fmtPrice(t.entryPrice)}</p>
+                </div>
+                <div className="flex items-center gap-1 text-dim/40">
+                  <div className="w-5 h-px bg-rim/50" />
+                  <span className="text-[10px] text-dim/60 whitespace-nowrap">
+                    {t.holdDays != null ? `${t.holdDays}d` : '—'}
+                  </span>
+                  <div className="w-5 h-px bg-rim/50" />
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] text-dim uppercase tracking-wider">
+                    {t.status === 'Open' ? 'Today' : 'Exit'}
+                  </p>
+                  <p className={`font-mono text-xs font-medium mt-0.5 ${t.status === 'Open' ? 'text-accent' : 'text-ink'}`}>
+                    {t.status === 'Open' ? 'Open' : (t.exitDate ?? '—')}
+                  </p>
+                  <p className="font-mono text-xs text-dim">{fmtPrice(t.closePrice)}</p>
+                </div>
+              </div>
+
+              <div className="hidden sm:block w-px h-8 bg-rim/40 self-center" />
+
+              {/* Context metrics */}
+              {t.costBasis != null && t.costBasis > 0 && (
+                <div>
+                  <p className="text-[10px] text-dim uppercase tracking-wider">Invested</p>
+                  <p className="font-mono text-xs text-ink font-medium mt-0.5">{fmt$(t.costBasis)}</p>
+                </div>
+              )}
+              {t.effectiveConf != null && (
+                <div>
+                  <p className="text-[10px] text-dim uppercase tracking-wider">Eff. Conf</p>
+                  <p className="font-mono text-xs text-ink font-medium mt-0.5">{fmtConf(t.effectiveConf)}</p>
+                </div>
+              )}
+              {t.status === 'Closed' && t.etfReturn != null && (
+                <div>
+                  <p className="text-[10px] text-dim uppercase tracking-wider">ETF During Hold</p>
+                  <p className={`font-mono text-xs font-medium mt-0.5 ${t.etfReturn >= 0 ? 'text-gain' : 'text-loss'}`}>
+                    {fmtPct(t.etfReturn)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ── Body: thesis left · attribution right ──────────────────── */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-rim/20">
+
+              {/* Left: thesis + exit + lesson */}
+              <div className="lg:col-span-2 px-6 py-5 space-y-4">
                 {(t.status === 'Open' ? t.thesis : t.entryThesis) && (
                   <div>
                     <p className="text-xs text-dim uppercase tracking-wider font-medium mb-2">Entry Thesis</p>
@@ -127,85 +189,71 @@ function ExpandableTradeRow({ t }: { t: TradeRow }) {
                 )}
                 {t.status === 'Closed' && t.exitReason && (
                   <div>
-                    <p className="text-xs text-dim uppercase tracking-wider font-medium mb-2">Exit Reasoning</p>
-                    <p className="text-sm text-ink leading-relaxed capitalize">
-                      {t.exitReason.replace(/_/g, ' ')}
-                    </p>
+                    <p className="text-xs text-dim uppercase tracking-wider font-medium mb-1">Exit</p>
+                    <p className="text-sm text-ink capitalize">{t.exitReason.replace(/_/g, ' ')}</p>
                   </div>
                 )}
                 {t.keyLesson && (
                   <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
-                    <p className="text-xs text-accent font-medium mb-1">Key Lesson</p>
+                    <p className="text-xs text-accent font-semibold mb-1">Key Lesson</p>
                     <p className="text-xs text-dim leading-relaxed">{t.keyLesson}</p>
                   </div>
                 )}
-
-                {/* Stats row */}
-                <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs pt-1 border-t border-rim/20">
-                  {t.costBasis != null && t.costBasis > 0 && (
-                    <div>
-                      <span className="text-dim">Size</span>
-                      <p className="font-mono text-ink mt-0.5">{fmt$(t.costBasis)}</p>
-                    </div>
-                  )}
-                  {t.specialistConf != null && (
-                    <div>
-                      <span className="text-dim">Specialist Conf</span>
-                      <p className="font-mono text-ink mt-0.5">{fmtConf(t.specialistConf)}</p>
-                    </div>
-                  )}
-                  {t.effectiveConf != null && (
-                    <div>
-                      <span className="text-dim">Effective Conf</span>
-                      <p className="font-mono text-ink mt-0.5">{fmtConf(t.effectiveConf)}</p>
-                    </div>
-                  )}
-                  {t.status === 'Closed' && t.etfReturn != null && (
-                    <div>
-                      <span className="text-dim">ETF During Hold</span>
-                      <p className={`font-mono mt-0.5 ${t.etfReturn >= 0 ? 'text-gain' : 'text-loss'}`}>
-                        {fmtPct(t.etfReturn)}
-                      </p>
-                    </div>
-                  )}
-                </div>
               </div>
 
-              {/* Right: attribution / open placeholder */}
-              {t.status === 'Closed' ? (
-                <div>
-                  <p className="text-xs text-dim uppercase tracking-wider font-medium mb-3">Attribution Quality</p>
-                  <div className="space-y-2">
-                    {[
-                      { l: 'Sector Analysis', v: t.sectorAccuracy },
-                      { l: 'Entry Timing',    v: t.entryTiming },
-                      { l: 'Exit Timing',     v: t.exitTiming },
-                    ].map(({ l, v }) => (
-                      <div key={l} className="flex items-center justify-between text-xs">
-                        <span className="text-dim">{l}</span>
-                        <span className={`font-medium ${qualityColor(v)}`}>{v ?? '—'}</span>
-                      </div>
-                    ))}
-                  </div>
-                  {t.outcome && (
-                    <div className="mt-4 pt-3 border-t border-rim/30">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        t.outcome === 'WIN' ? 'bg-gain/10 text-gain' :
-                        t.outcome === 'LOSS' ? 'bg-loss/10 text-loss' : 'bg-dim/10 text-dim'
-                      }`}>{t.outcome}</span>
+              {/* Right: attribution (closed) or signal quality (open) */}
+              <div className="px-6 py-5">
+                {t.status === 'Closed' ? (
+                  <>
+                    <p className="text-xs text-dim uppercase tracking-wider font-medium mb-4">Attribution</p>
+                    <div className="space-y-2.5">
+                      {([
+                        { l: 'Sector Analysis', v: t.sectorAccuracy },
+                        { l: 'Entry Timing',    v: t.entryTiming    },
+                        { l: 'Exit Timing',     v: t.exitTiming     },
+                      ] as { l: string; v: string | undefined }[]).map(({ l, v }) => (
+                        <div key={l} className="flex items-center justify-between gap-3">
+                          <span className="text-xs text-dim">{l}</span>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${attrBadge(v)}`}>
+                            {v ?? '—'}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <p className="text-xs text-dim uppercase tracking-wider font-medium mb-2">Position Status</p>
-                  <div className="bg-accent/5 border border-accent/20 rounded-lg p-3">
-                    <p className="text-xs text-accent font-medium mb-1">Currently Open</p>
-                    <p className="text-xs text-dim">Post-mortem attribution available after close.</p>
-                  </div>
-                </div>
-              )}
+                    {t.outcome && (
+                      <div className="mt-5 pt-4 border-t border-rim/20">
+                        <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                          t.outcome === 'WIN'  ? 'bg-gain/10 text-gain' :
+                          t.outcome === 'LOSS' ? 'bg-loss/10 text-loss' : 'bg-dim/10 text-dim'
+                        }`}>{t.outcome}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-dim uppercase tracking-wider font-medium mb-4">Signal Quality</p>
+                    <div className="space-y-2.5">
+                      {t.specialistConf != null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-dim">Specialist Conf</span>
+                          <span className="font-mono text-xs text-ink">{fmtConf(t.specialistConf)}</span>
+                        </div>
+                      )}
+                      {t.effectiveConf != null && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-dim">Effective Conf</span>
+                          <span className="font-mono text-xs text-ink">{fmtConf(t.effectiveConf)}</span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-5 pt-4 border-t border-rim/20">
+                      <span className="text-xs text-dim/60 italic">Post-mortem available after close</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
+
           </td>
         </tr>
       )}
@@ -399,6 +447,8 @@ export default function PerformancePage() {
       entryPrice:     p.entryPrice,
       closePrice:     p.currentPrice,
       holdDays:       p.holdDays,
+      entryDate:      p.entryDate ?? null,
+      exitDate:       null,
       pnl:            p.pnl,
       pnlPct:         p.pnlPct,
       status:         'Open',
@@ -419,6 +469,8 @@ export default function PerformancePage() {
         entryPrice:     t.entry_price,
         closePrice:     t.exit_price,
         holdDays:       t.hold_days,
+        entryDate:      fmtDate(t.entry_date),
+        exitDate:       fmtDate(t.exit_date),
         pnl:            t.pnl_usd,
         pnlPct:         t.pnl_pct,
         status:         'Closed',

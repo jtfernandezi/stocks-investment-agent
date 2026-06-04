@@ -124,6 +124,7 @@ export async function GET() {
         effectiveConfidence:  entry?.effective_confidence != null ? parseFloat(String(entry.effective_confidence)) : null,
         specialistConfidence: entry?.specialist_confidence != null ? parseFloat(String(entry.specialist_confidence)) : null,
         holdDays,
+        entryDate: entryAt ? entryAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : null,
         stopPct,
         stopPrice,
         distToStop:           stopPrice != null ? Math.abs(currentPrice - stopPrice) : null,

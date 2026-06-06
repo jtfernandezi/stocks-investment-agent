@@ -9,23 +9,23 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 | Workflow orchestration | n8n (Railway) |
 | Database | Neon PostgreSQL (`stocks` schema) |
 | Trade execution | Alpaca Paper Trading API |
-| Price data | Alpaca Data API (~350 daily bars, 80 stocks + SPY, start=2025-01-01) |
+| Price data | Alpaca Data API (~350 daily bars, 100 stocks + SPY + 10 sector ETFs, start=2025-01-01) |
 | Fundamentals | Finnhub API (8:30 AM ET daily via Fundamentals Refresh workflow, 60 req/min limit) |
 | News | RSS feeds (2 per niche, up to 15 articles/niche/session) |
-| Specialist LLMs | GPT-4o-mini |
+| Specialist LLMs | GPT-4o (upgraded from GPT-4o-mini 2026-06-05) |
 | Orchestrator LLM | GPT-5.1 |
 | Dashboard | Next.js 15 on Vercel (`web/`) — 6 pages wired to Neon + Alpaca |
 
 ## Four Workflows
 
 **Main Analysis v2** — 3×/day (9:30 AM, 12 PM, 3:50 PM ET) — workflow ID: `l2d06hEvDlfLibms`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) → [closed: stop | open: Set Session] → 8 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → merge tree → Parse & Save All Signals → orchestrator → Parse Orchestrator Output → three parallel branches: (1) Process Post-Trade (snapshot + post-mortem), (2) Build Orchestrator Session SQL → Store Orchestrator Summary, (3) Has Trade Actions? → [no trades: No Trades — End | trades: Prepare Trade Actions → trade execution]. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session` (bypasses the market open gate — watchdog already verifies market hours). All 16 RSS nodes have `continueRegularOutput` error handling — a single failed feed does not stop the workflow.
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? (Start) → [closed: stop | open: Set Session] → 10 parallel specialist branches (each: RSS1 + RSS2 → Merge → Build Message → Specialist LLM → Tag Signal) → balanced binary merge tree (8 niches → Merge All Signals; + Healthcare/Financials → Merge L1 Health Fin; both → Merge All 10 Signals) → Parse & Save All Signals → orchestrator → Parse Orchestrator Output → three parallel branches: (1) Process Post-Trade (snapshot + post-mortem), (2) Build Orchestrator Session SQL → Store Orchestrator Summary, (3) Has Trade Actions? → [no trades: No Trades — End | trades: Prepare Trade Actions → trade execution]. Close sessions additionally fan out to the letter generation branch: Is Close Session? → Build Letter Prompt → Letter LLM → Parse & Store Letter → Store Letter → `investor_letters`. Also has a "When Called by Watchdog" trigger that enters at `Set Session` (bypasses the market open gate — watchdog already verifies market hours). All 20 RSS nodes have `continueRegularOutput` error handling — a single failed feed does not stop the workflow.
 
 **Watchdog** — every 30 min at :10 and :40, 10:10 AM–3:40 PM ET (starts at 10:10, not 9:30 — Main Analysis already covers the open; runs at :10/:40 to avoid the 12:00 PM midday Main Analysis; last run at 3:40 so it doesn't overlap the 3:50 PM close session) — workflow ID: `7n1bPJ91OkMx3KM4`
 Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: Fetch Alpaca Positions] → two parallel branches: (A) Has Open Positions? → IF Has Positions? → three parallel branches: (1) Split Tickers → Fetch Alpaca News → Build News Prompt → Call Watchdog LLM → Parse Flip Response → IF Flips Detected? → [no flips: Done | flips: Trigger Main Analysis], (2) Load Position Metadata (Watchdog) [thesis/niche, read by Build News Prompt via $()], (3) Fetch Alpaca Open Orders (Watchdog) [trailing stop proximity, read by Build News Prompt via $()]; (B) Load All Position Metadata → Find TS Exits → Fetch TS Order → Build TS PM Payload → Trigger PM (Trailing Stop) → Delete TS Metadata. Branch B detects trailing stop exits (positions in `position_metadata` but gone from Alpaca, or with qty < 1) and routes them through the Post-Mortem workflow within ~30 min. Orchestrator decides whether to close or hold. Does NOT monitor prices — Alpaca handles trailing stops natively (GTC orders).
 
 **Fundamentals Refresh** — daily 8:30 AM ET Mon–Fri — workflow ID: `8hHaG6U0ToaHRAei`
-Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: two parallel branches]: (1) Prepare Tickers → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop; (2) Fetch Earnings Calendar (Finnhub `/calendar/earnings?from=today&to=today+30d`) → Parse Earnings → Store Earnings Calendar. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, analyst consensus, and upcoming earnings dates. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 80 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
+Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [closed: stop | open: two parallel branches]: (1) Prepare Tickers → Loop Over Tickers → Fetch Metric (Finnhub `/stock/metric`) → Fetch Recommendations (Finnhub `/stock/recommendation`) → Parse Fundamentals → Upsert Fundamentals → Wait (4s) → Loop; (2) Fetch Earnings Calendar (Finnhub `/calendar/earnings?from=today&to=today+30d`) → Parse Earnings → Store Earnings Calendar. Runs before the 9:30 AM Main Analysis so all three daily sessions have fresh P/E, margins, analyst consensus, and upcoming earnings dates. Price targets (FMP `/stable/price-target-consensus`) were evaluated but skipped — free tier only covers ~15–20 of 100 stocks; `price_target_avg/high/low` remain null unless FMP plan is upgraded.
 
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
 3-component attribution (A: Sector Accuracy, B: Entry Timing, C: Exit Timing) → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
@@ -72,7 +72,7 @@ n8n API: `https://<N8N_HOST>/api/v1`
 Header: `X-N8N-API-KEY: <key from memory reference_n8n.md>`
 
 Workflow IDs:
-- Main Analysis v2: `l2d06hEvDlfLibms` (contains all 8 specialist Build nodes + Build Orchestrator Input)
+- Main Analysis v2: `l2d06hEvDlfLibms` (contains all 10 specialist Build nodes + Build Orchestrator Input)
 - Post-Mortem: `BtVZfEGwbsDpOczg` (contains Build Post-Mortem Input)
 - Watchdog: `7n1bPJ91OkMx3KM4`
 
@@ -125,7 +125,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 - Max short exposure: $12k (20% of portfolio)
 - Max open positions: 12 total
 - Max per sector: up to 2 longs (1st always allowed; 2nd only with TREND pattern + ≤$5k size) + 1 short
-- Trailing stops: ATR×2.5, clamped 5–15%, set via Alpaca GTC orders
+- Trailing stops: ATR×3, clamped 8–20%, set via Alpaca GTC orders (widened 2026-06-05 for the 2–6 week swing horizon; also enforced as a hard [8,20] band in `07`)
 - Penalties (stack multiplicatively — 3+ = no trade): correlation >0.70, earnings ≤2 days, NOISE history, FIRST_SIGNAL
 
 ## Key Implementation Details
@@ -151,16 +151,20 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 
 | Node | Symbols | limit |
 |------|---------|-------|
-| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB | 3600 |
+| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,CHKP,QLYS,TENB | 3600 |
 | Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 3600 |
 | Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 3600 |
-| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC | 3600 |
+| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC | 3600 |
 | Fetch Bars AI Semis | ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS | 3600 |
 | Fetch Bars Cloud | ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB | 3600 |
 | Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 3600 |
 | Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 3600 |
-| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR | 3600 |
-| **Fetch Price Bars** (Code) | Merges all 9 → `{bars: {...}}` | — |
+| Fetch Bars Healthcare | UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO | 3600 |
+| Fetch Bars Financials | JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF | 3600 |
+| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF | 4400 |
+| **Fetch Price Bars** (Code) | Merges all 11 → `{bars: {...}}` (hardcoded sourceNodes list — add new bars nodes here) | — |
+
+`Merge Price Bars` is a v3 Merge with `numberInputs: 11` (one port per bars node). `Fetch Bars SPY` carries SPY + all 10 sector ETFs at `limit=4400` (11 symbols × ~355 bars).
 
 ## Key Implementation Details — Execute Market Order
 
@@ -279,9 +283,26 @@ The `Execute Market Order` and `Submit Trailing Stop` HTTP nodes use **`bodyPara
 - **`spy_return_pct` never written to DB** — `portfolio_snapshots.spy_return_pct` was always NULL despite being correctly computed in `Process Post-Trade` (`snapshot.spy_return_pct`). Root cause: `Store Portfolio Snapshot` n8n Postgres node INSERT was missing `spy_return_pct` from its column list and VALUES clause. Fixed by adding `spy_return_pct` to both. Historical rows remain NULL; all future sessions will populate the column.
 - **Watchlist NEUTRAL entries removed** — Orchestrator was padding the watchlist with NEUTRAL stocks (no directional view), producing ~20 entries per session. Root cause: Step 5 watchlist rule was too permissive ("sectors at 2/5 BULLISH — watch for confirmation" invited neutral monitoring). Fixed in `06_build_orchestrator_input.js` system prompt: Step 5 now explicitly requires a directional view (BULLISH or BEARISH) to add any ticker; NEUTRAL stocks are excluded. Output schema `direction` field changed from `"long" | "short"` to `"BULLISH" | "BEARISH"` for consistency with DB and UI.
 
+## Enhancements (2026-06-05) — Major audit & overhaul
+
+Full-system audit found the fund had been **deadlocked in ~100% cash since 2026-06-03** (0 new positions, 0 shorts ever). Six-track fix:
+
+- **Track 1 — Un-deadlock (root cause).** `Load Specialist Accuracy` still SELECTed `best_pattern,worst_pattern` (dropped 2026-06-03) → query errored every session → `continueOnFail` returned empty → `specialistEffectiveConf` was `{}` → the cold-start gate in `06` stamped the 0.72 cap on **all 8 specialists every session** → nothing cleared the 0.75 floor → zero trades. Fixed the query; also fixed `Load Pattern Performance` (dropped `niche`) and repointed `Load Trade Lessons` to `trades WHERE status='CLOSED'` (was reading deprecated `trade_lessons`). **Reworked the cold-start gate** (`06` + new `signalCountByNiche` in `02`) to key off *signal-history depth* (≈21/niche, all warm) instead of closed-trade attribution (which can never bootstrap). New caps: <3 signals→0.72 (no trade), 3–9→0.80, ≥10 uncalibrated→0.84 (mid size), ≥10 calibrated→uncapped.
+- **Track 2 — Dead inputs.** Analyst consensus was `0/80` (all buy/hold/sell = 0): `fundamentals_parse.js` did `Array.isArray()` on `$('Fetch Recommendations').first().json`, but n8n splits the array into items so it was always an object → defaulted to 0. Fixed with `.all()` reconstruction → real consensus now flows. Price targets confirmed premium-gated on Finnhub → stripped from prompts. Also fixed `Update Specialist Accuracy` (Post-Mortem) which INSERTed dropped `best_pattern/worst_pattern` and read deprecated `trade_lessons` → calibration loop now actually writes.
+- **Track 3 — Risk recalibrated for swing cadence.** Trailing stops ATR×2.5/5–15% → **ATR×3/8–20%** (`02`), enforced as a hard [8,20] band in `07` (the whole book was whipsawed to cash on the 06-05 -2.5% day). Calibration `scaling_factor` now shrinks toward 1.0 by sample size and clamps to [0.5,1.5] (`02`) — kills small-sample noise (2 trades → 2.78× before). Orchestrator EV rules now apply only with ≥5 closed trades.
+- **Track 4 — Real short book.** Specialists were 77% bullish / 5.7% bearish → de-facto long-only beta. Added a **leader/laggard mandate**: every specialist must surface a relative laggard short every session, and the orchestrator builds **market-neutral intra-sector pairs** (long leader + short laggard) even in bullish sectors. Scrubbed dead/mis-bucketed tickers: **TMUS→CHKP** (cyber; TMUS is telecom) and **LTHM→AA** (copper; LTHM delisted 2024 in the Livent→Arcadium merger, had been feeding a phantom $16.53). Updated in all 7 places (02 NICHE list n/a, 08, watchdog, fundamentals×2, web constants, Fetch Bars, Build nodes).
+- **Track 5 — Model.** 8 specialists + post-mortem attributor upgraded GPT-4o-mini → **GPT-4o** (kept v1.3 nodes / output shape). Orchestrator stays GPT-5.1; Letter stays mini.
+- **Track 6 — Polish.** Anti-anchoring guidance (specialists clustered at exactly 0.85) + signal-consistency: each specialist now receives its own recent signals and is told not to flip direction / swing confidence >0.15 without a new catalyst (was flipping 0.85 BULLISH↔BEARISH in 1–2 days).
+
+## Enhancements (2026-06-05 — session 2) — Universe expanded to 10 niches / 100 stocks
+
+Added two niches (instead of swapping `data_centers`) to diversify away from the AI-beta cluster and feed the short book: **`healthcare`** (UNH, ELV, CVS, LLY, MRK, PFE, ABBV, ISRG, MDT, TMO — ETF XLV) and **`financials`** (JPM, BAC, WFC, C, GS, MS, SCHW, BLK, AXP, COF — ETF XLF). Both are low-correlated to tech and rich in two-sided/short candidates.
+
+n8n build (Main Analysis, 133→149 nodes): two new specialist branches (RSS1+RSS2 → Merge RSS → Build Message → Specialist GPT-4o → Tag Signal), each triggered by `Compute Derived Metrics`. The v1 binary signal merge tree was extended: existing 8 still flow to `Merge All Signals`; the 2 new Tags → new `Merge L1 Health Fin`; both → new `Merge All 10 Signals` → `Parse & Save All Signals` (rewired off Merge All Signals). Two new `Fetch Bars` nodes (triggered by `Collect Orders`) wired into `Merge Price Bars` (numberInputs 9→11); `Fetch Price Bars` sourceNodes extended; `Fetch Bars SPY` now carries XLV+XLF at limit=4400. Registry updated everywhere: `02` NICHES + NICHE_ETF, `08`/watchdog TICKER_NICHE, `post_mortem_build_input` SECTOR_ETF, fundamentals Prepare Tickers + Parse Earnings, web constants, orchestrator prompt (8→10). RSS: FierceHealthcare+FiercePharma / Fed-Press+WSJ-Markets (deep finance trade-press like American Banker had dead feeds).
+
 ## Known Open Issues
 
-None. All previously tracked issues resolved as of 2026-06-03.
+None blocking. First 10-niche session is 2026-06-06 9:30 AM (healthcare/financials fundamentals populate at the 8:30 AM refresh; until then those tickers show "No data" — graceful, the specialist falls back to price/technicals/news).
 
 ## position_metadata notes
 
@@ -296,7 +317,7 @@ None. All previously tracked issues resolved as of 2026-06-03.
 
 | Time | Workflow | Action |
 |------|----------|--------|
-| 8:30 AM | Fundamentals Refresh | Fetch P/E, margins, analyst consensus for all 80 stocks |
+| 8:30 AM | Fundamentals Refresh | Fetch P/E, margins, analyst consensus for all 100 stocks |
 | 9:30 AM | Main Analysis v2 | Morning session — full specialist + orchestrator run |
 | 10:10 AM–3:40 PM | Watchdog | Every 30 min (:10 and :40) — thesis flip detection on open positions |
 | 12:00 PM | Main Analysis v2 | Midday session |
@@ -309,13 +330,13 @@ Main Analysis v2 and Watchdog gate on Finnhub `isOpen` at startup — exits clea
 
 Four new data points added to every specialist's per-stock input block:
 
-1. **Relative strength vs sector ETF** — `vs ETF: 1D: +1.2% | 5D: +3.4% | 30D: -0.8%`. `Fetch Bars SPY` now fetches all 8 sector ETFs alongside SPY. `02_compute_derived_metrics.js` builds `etfPriceMap` keyed by niche; `build_specialist_message.js` computes stock return minus ETF return per period.
+1. **Relative strength vs sector ETF** — `vs ETF: 1D: +1.2% | 5D: +3.4% | 30D: -0.8%`. `Fetch Bars SPY` now fetches all 10 sector ETFs alongside SPY. `02_compute_derived_metrics.js` builds `etfPriceMap` keyed by niche; `build_specialist_message.js` computes stock return minus ETF return per period.
 
 2. **Volume / ADV ratio** — `Volume: 42.1M (ADV20: 28.5M) | Ratio: 1.48x`. Computed from bar `v` field already in the 252-bar fetch. ADV20 uses prior 20 sessions (excluding most recent bar). Ratio > 1.5x = institutional conviction; < 0.5x = move lacks conviction.
 
 3. **Analyst upside %, PT spread, buy consensus %** — `Consensus: 12B / 3H / 1S (75% buy) | PT: $145.00 (+20.8% upside) | Spread: $110–$180 (48% — wide)`. All computed in `formatStockData` from existing Finnhub fundamentals. System prompt includes explicit long/short inversion guidance: heavy buy consensus on a short = squeeze risk, not support.
 
-4. **Cold-start confidence cap** — Specialists with < 10 sessions on record have no reliable calibration. `06_build_orchestrator_input.js` caps effective_confidence before the orchestrator sees it: 0–4 sessions → cap 0.72 (below trading threshold), 5–9 sessions → cap 0.78 (min size only). `build_specialist_message.js` tells the specialist it's in cold-start mode and to report honest analysis — the specific cap values are intentionally NOT revealed to the specialist to prevent anchoring (discovered 2026-05-26: revealing 0.72 caused all 8 specialists to output exactly 0.72).
+4. **Cold-start confidence cap** — `06_build_orchestrator_input.js` caps effective_confidence before the orchestrator sees it. **Reworked 2026-06-05** to key off *signal-history depth* (`ctx.signalCountByNiche`, computed in `02`), NOT `specialist_accuracy.total_signals` — the latter only grows from closed trades and caused a permanent deadlock. Current caps: <3 signals → 0.72 (below trading threshold), 3–9 signals → 0.80 (min/mid size), ≥10 signals but no closed-trade calibration → 0.84 (up to mid size), ≥10 + calibrated → uncapped (scaling applies). `build_specialist_message.js` tells the specialist it's in cold-start mode and to report honest analysis — the specific cap values are intentionally NOT revealed to prevent anchoring (discovered 2026-05-26: revealing 0.72 caused all 8 specialists to output exactly 0.72).
 
 ## Watchdog Enhancements (2026-05-25)
 
@@ -335,18 +356,20 @@ All four workflows activated and running autonomously.
 - **Watchdog flip detection**: verified — CCJ thesis flip (Cameco milling suspension) detected, Main Analysis v2 triggered ✓
 - **Post-mortem trigger**: wired correctly; fires on first real orchestrator-initiated SELL ✓ (pending live test)
 
-## 8 Niches / 80 Stocks
+## 10 Niches / 100 Stocks
 
 | Niche ID | Display Name | Tickers |
 |----------|-------------|---------|
-| `cybersecurity` | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CYBR, TMUS, QLYS, TENB |
+| `cybersecurity` | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CYBR, CHKP, QLYS, TENB |
 | `defense` | Defense | LMT, RTX, NOC, GD, HII, LHX, KTOS, RCAT, PLTR, AXON |
 | `nuclear_uranium` | Nuclear / Uranium | CCJ, UEC, NXE, DNN, SMR, OKLO, CEG, VST, ETR, NEE |
-| `copper_minerals` | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, LTHM, ALB, SQM, LAC |
+| `copper_minerals` | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, AA, ALB, SQM, LAC |
 | `semiconductors` | Semiconductors & EDA | ARM, AMAT, LRCX, KLAC, ON, TER, NXPI, MCHP, MPWR, SNPS |
 | `enterprise_saas` | Enterprise SaaS | ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB |
 | `oil_gas` | Oil & Gas | XOM, CVX, COP, SLB, HAL, MPC, PSX, VLO, OXY, EOG |
 | `data_centers` | Data Centers & AI Infrastructure | EQIX, DLR, AMT, IREN, CORZ, VRT, SMCI, DELL, HPE, WDC |
+| `healthcare` | Healthcare & Pharma | UNH, ELV, CVS, LLY, MRK, PFE, ABBV, ISRG, MDT, TMO |
+| `financials` | Financials | JPM, BAC, WFC, C, GS, MS, SCHW, BLK, AXP, COF |
 
 ## Database Schema (Neon — `stocks` schema)
 
@@ -356,7 +379,7 @@ All four workflows activated and running autonomously.
 | `portfolio_snapshots` | Portfolio state + P&L vs SPY per session. `positions_json` holds all positions (long + short) with a `side` field. `orchestrator_summary` and `short_positions_json` dropped. |
 | `watchlist` | Stocks flagged for monitoring (replaced entirely each session). Includes `trigger_condition` (specific entry condition from orchestrator `trigger` field) and `session_id` (which session added this item). |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
-| `correlation_matrix` | Pairwise 90-day correlation for all 80 stocks |
+| `correlation_matrix` | Pairwise 90-day correlation for all 100 stocks |
 | `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus (buy/hold/sell counts). `price_target_*` and `next_earnings_date` dropped — always NULL. |
 | `trades` | Unified trade lifecycle table — `status=OPEN` written at BUY/SHORT, updated to `CLOSED` with full attribution at post-mortem. Source of truth for all trade history. Partial unique index prevents duplicate open positions. |
 | `trade_lessons` | **Deprecated (2026-06-03)** — superseded by `trades`. Table retained as safety net; no workflow reads from or writes to it. Safe to DROP after live verification. |
@@ -396,7 +419,9 @@ Auto-improves without code changes after each closed trade:
 | `enterprise_saas` | https://diginomica.com/feed | https://siliconangle.com/feed/ |
 | `oil_gas` | https://oilprice.com/rss/main | https://www.naturalgasintel.com/feed/ |
 | `data_centers` | https://www.datacenterdynamics.com/en/rss/ | https://www.datacenterknowledge.com/rss.xml |
+| `healthcare` | https://www.fiercehealthcare.com/rss/xml | https://www.fiercepharma.com/rss/xml |
+| `financials` | https://www.federalreserve.gov/feeds/press_all.xml | https://feeds.a.dj.com/rss/RSSMarketsMain.xml |
 
 ## Sector ETFs (used in post-mortem attribution)
 
-`cybersecurity → HACK` | `defense → ITA` | `nuclear_uranium → URA` | `copper_minerals → COPX` | `semiconductors → SOXX` | `enterprise_saas → SKYY` | `oil_gas → XLE` | `data_centers → DTCR`
+`cybersecurity → HACK` | `defense → ITA` | `nuclear_uranium → URA` | `copper_minerals → COPX` | `semiconductors → SOXX` | `enterprise_saas → SKYY` | `oil_gas → XLE` | `data_centers → DTCR` | `healthcare → XLV` | `financials → XLF`

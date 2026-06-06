@@ -64,6 +64,8 @@ const SECTOR_ETF = {
   enterprise_saas:   'SKYY',
   oil_gas:           'XLE',
   data_centers:      'DTCR',
+  healthcare:        'XLV',
+  financials:        'XLF',
 };
 const etfTicker     = SECTOR_ETF[webhook.niche] || 'SPY';
 // sectorEtfReturn populated from Compute ETF Return node (see top of file)

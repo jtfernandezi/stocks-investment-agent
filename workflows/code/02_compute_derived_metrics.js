@@ -69,10 +69,13 @@ for (const [ticker, bars] of Object.entries(allBars)) {
     atr14 = sumTR / 14;
   }
 
-  // Trailing stop %: ATR×2.5 as % of current price, clamped 5–15%
+  // Trailing stop %: ATR×3 as % of current price, clamped 8–20%.
+  // Deliberately wider than a day-trading stop — these are 2–6 week swing holds, and
+  // a stop on 2.5× daily ATR (old 5–15% clamp) was getting whipsawed out by normal
+  // intraday pullbacks (the entire book stopped to cash on the 2026-06-05 -2.5% day).
   const trailPct = atr14 > 0
-    ? Math.min(Math.max((atr14 * 2.5 / current) * 100, 5), 15)
-    : 8;  // default 8% if ATR unavailable
+    ? Math.min(Math.max((atr14 * 3.0 / current) * 100, 8), 20)
+    : 10;  // default 10% if ATR unavailable
 
   // ADV-20: prior 20 sessions (excluding most recent bar) vs most recent session
   const vol_today = sorted[sorted.length - 1].v || 0;
@@ -86,6 +89,35 @@ for (const [ticker, bars] of Object.entries(allBars)) {
   }
   const adv_ratio = adv_20 > 0 ? parseFloat((vol_today / adv_20).toFixed(2)) : null;
 
+  // RSI(14)
+  let rsi14 = null;
+  if (sorted.length >= 15) {
+    const changes = [];
+    for (let i = sorted.length - 14; i < sorted.length; i++) {
+      changes.push(sorted[i].c - sorted[i - 1].c);
+    }
+    const avgGain = changes.filter(c => c > 0).reduce((a, b) => a + b, 0) / 14;
+    const avgLoss = changes.filter(c => c < 0).reduce((a, b) => a + Math.abs(b), 0) / 14;
+    rsi14 = avgLoss === 0
+      ? 100
+      : parseFloat((100 - (100 / (1 + avgGain / avgLoss))).toFixed(1));
+  }
+
+  // SMA50 / SMA200
+  const sma50 = sorted.length >= 50
+    ? parseFloat((sorted.slice(-50).reduce((a, b) => a + b.c, 0) / 50).toFixed(2))
+    : null;
+  const sma200 = sorted.length >= 200
+    ? parseFloat((sorted.slice(-200).reduce((a, b) => a + b.c, 0) / 200).toFixed(2))
+    : null;
+
+  // 52-week high/low
+  const w52high = parseFloat(Math.max(...sorted.map(b => b.h)).toFixed(2));
+  const w52low  = parseFloat(Math.min(...sorted.map(b => b.l)).toFixed(2));
+  const pct52w  = (w52high - w52low) > 0
+    ? parseFloat(((current - w52low) / (w52high - w52low) * 100).toFixed(1))
+    : null;
+
   priceMap[ticker] = {
     current:        parseFloat(current.toFixed(2)),
     chg_1d_pct:     parseFloat(((current - prev1d)  / prev1d  * 100).toFixed(2)),
@@ -93,11 +125,15 @@ for (const [ticker, bars] of Object.entries(allBars)) {
     chg_30d_pct:    parseFloat(((current - prev30d) / prev30d * 100).toFixed(2)),
     atr14:          parseFloat(atr14.toFixed(4)),
     trail_pct:      parseFloat(trailPct.toFixed(2)),
-    week_52_high:   parseFloat(Math.max(...sorted.map(b => b.h)).toFixed(2)),
-    week_52_low:    parseFloat(Math.min(...sorted.map(b => b.l)).toFixed(2)),
+    week_52_high:   w52high,
+    week_52_low:    w52low,
     vol_today:      Math.round(vol_today),
     adv_20:         Math.round(adv_20),
     adv_ratio,
+    rsi14,
+    sma50,
+    sma200,
+    pct_52w:        pct52w,
   };
 }
 
@@ -111,6 +147,8 @@ const NICHE_ETF = {
   enterprise_saas:   'SKYY',
   oil_gas:           'XLE',
   data_centers:      'DTCR',
+  healthcare:        'XLV',
+  financials:        'XLF',
 };
 const etfPriceMap = {};
 for (const [niche, etfTicker] of Object.entries(NICHE_ETF)) {
@@ -209,7 +247,8 @@ for (const [ticker, corrs] of Object.entries(corrMap)) {
 // ── SIGNAL HISTORY BY NICHE ───────────────────────────────────────────────────
 const NICHES = [
   'cybersecurity', 'defense', 'nuclear_uranium', 'copper_minerals',
-  'semiconductors', 'enterprise_saas', 'oil_gas', 'data_centers'
+  'semiconductors', 'enterprise_saas', 'oil_gas', 'data_centers',
+  'healthcare', 'financials'
 ];
 
 const signalsByNiche = {};
@@ -253,6 +292,16 @@ for (const niche of NICHES) {
   }).join(' → ');
 
   signalsByNiche[niche] = { signals: nicheRows, pattern, formatted };
+}
+
+// ── SIGNAL-HISTORY DEPTH PER NICHE ────────────────────────────────────────────
+// How many signals each specialist has actually issued in the loaded window.
+// Used by the orchestrator's cold-start gate (06) to measure warm-up — keyed to
+// real signal depth, NOT closed-trade attribution (which can never bootstrap:
+// trades can't open while capped below the trading floor → permanent deadlock).
+const signalCountByNiche = {};
+for (const niche of NICHES) {
+  signalCountByNiche[niche] = signalRows.filter(r => r.niche === niche).length;
 }
 
 // ── SECTOR ROTATION SUMMARY ───────────────────────────────────────────────────
@@ -300,9 +349,16 @@ const last7Snapshots = [...snapshotRows]
 // ── SPECIALIST EFFECTIVE CONFIDENCE ──────────────────────────────────────────
 const specialistEffectiveConf = {};
 for (const row of accuracyRows) {
-  const scaling = (row.hit_rate && row.avg_reported_confidence && row.avg_reported_confidence > 0)
+  let scaling = (row.hit_rate && row.avg_reported_confidence && row.avg_reported_confidence > 0)
     ? row.hit_rate / row.avg_reported_confidence
     : 1.0;
+  // Shrink the scaling factor toward 1.0 by sample size, then clamp to a sane band.
+  // Tiny samples produce absurd factors (e.g. 2 lucky trades → 2.78×) that would
+  // wildly distort effective confidence. Full weight only at 10+ closed trades.
+  const nClosed = row.total_signals || 0;
+  const shrink  = Math.min(1, nClosed / 10);
+  scaling = 1 + (scaling - 1) * shrink;
+  scaling = Math.min(1.5, Math.max(0.5, scaling));
   specialistEffectiveConf[row.niche] = {
     scaling_factor:          parseFloat(scaling.toFixed(3)),
     hit_rate:                row.hit_rate,
@@ -358,6 +414,7 @@ return [{
 
     // Signals & rotation
     signalsByNiche,
+    signalCountByNiche,
     rotationSummary,
 
     // P&L

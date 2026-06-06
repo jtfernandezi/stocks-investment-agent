@@ -66,10 +66,12 @@ Two different native OpenAI node versions are used — their output shapes diffe
   │  [6f] Fetch Bars Cloud            (HTTP GET Alpaca Data)      │
   │  [6g] Fetch Bars Oil Gas          (HTTP GET Alpaca Data)      │
   │  [6h] Fetch Bars Data Centers     (HTTP GET Alpaca Data)      │
+  │  [6h2] Fetch Bars Healthcare      (HTTP GET Alpaca Data)      │
+  │  [6h3] Fetch Bars Financials      (HTTP GET Alpaca Data)      │
   │  [6i] Fetch Bars SPY              (HTTP GET Alpaca Data)      │
-  │         ↓ (all 9 feed into [6j])                             │
-  │  [6j] Merge Price Bars  (Merge node, numberInputs: 9)         │
-  │  [6k] Fetch Price Bars  (Code — merges 9 responses into       │
+  │         ↓ (all 11 feed into [6j])                            │
+  │  [6j] Merge Price Bars  (Merge node, numberInputs: 11)        │
+  │  [6k] Fetch Price Bars  (Code — merges 11 responses into      │
   │                          single {bars: {...}} object)         │
   │                                                               │
   │  [7]  Load Signal History         (Postgres SELECT)           │
@@ -104,15 +106,17 @@ Two different native OpenAI node versions are used — their output shapes diffe
   │         TICKERS)                                              │
   │  [E] Specialist [Niche]  (Native OpenAI node v1.3)            │
   └──────────────────────────────────────────────────────────────┘
-      ↓ (Merge All Signals waits for all 8 branches)
-[19] Merge All Signals                 (Merge node, numberInputs: 8)
+      ↓ (live signal merge is a binary tree of 2-input v1 Merge nodes: 8 niches via
+        Tag→L1→L2→Merge All Signals; Healthcare+Financials→Merge L1 Health Fin;
+        both→Merge All 10 Signals → Parse & Save All Signals)
+[19] Merge All 10 Signals              (final merge of all 10 niche signals)
       ↓
 [20] Parse & Save All Signals          (Code: parse_save_all_signals.js)
-      → outputs 8 items (one per niche, with parsed signal + effective_confidence)
+      → outputs 10 items (one per niche, with parsed signal + effective_confidence)
       ↓ (fans out to both [21] and [22])
 [21] Store All Signals                 (Postgres UPSERT — alwaysOutputData: true)
 [22] Build Orchestrator Input          (Code: 06_build_orchestrator_input.js)
-      → reads 8 items via $("Parse & Save All Signals").all()
+      → reads 10 items via $("Parse & Save All Signals").all()
       ↓
 [23] Call Orchestrator LLM            (Native OpenAI node v2.1 — GPT-5.1)
       ↓
@@ -214,24 +218,26 @@ All triggered in parallel. Each uses the Alpaca Data API credential + manual `AP
 
 | Node name | Symbols | limit |
 |-----------|---------|-------|
-| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,TMUS,QLYS,TENB | 252 |
-| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 252 |
-| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 252 |
-| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,LTHM,ALB,SQM,LAC | 252 |
-| Fetch Bars AI Semis | NVDA,AMD,AVGO,QCOM,MRVL,AMAT,KLAC,LRCX,MU,ARM | 252 |
-| Fetch Bars Cloud | MSFT,AMZN,GOOGL,META,ORCL,SNOW,MDB,DDOG,NET,CRM | 252 |
-| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 252 |
-| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 252 |
-| Fetch Bars SPY | SPY | 252 |
+| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,CHKP,QLYS,TENB | 3600 |
+| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 3600 |
+| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 3600 |
+| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC | 3600 |
+| Fetch Bars AI Semis | ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS | 3600 |
+| Fetch Bars Cloud | ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB | 3600 |
+| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 3600 |
+| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 3600 |
+| Fetch Bars Healthcare | UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO | 3600 |
+| Fetch Bars Financials | JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF | 3600 |
+| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF | 4400 |
 
-URL pattern: `https://data.alpaca.markets/v2/stocks/bars?symbols={SYMBOLS}&timeframe=1Day&limit=252&feed=sip`
+URL pattern: `https://data.alpaca.markets/v2/stocks/bars?symbols={SYMBOLS}&timeframe=1Day&limit=3600&start=2025-01-01&feed=sip` (limit is shared across all symbols in a multi-symbol request — 3600 covers 10 symbols × ~350 bars)
 
 **Why 252 bars**: Compute Derived Metrics needs 31 bars for 30d momentum, 15 for ATR-14, and 252 for accurate 52-week high/low.
 
 ### [6j] Merge Price Bars
 - Node type: Merge
-- Set `numberInputs: 9` and wire each of the 9 HTTP nodes to a distinct port index 0–8
-- **Critical**: Do NOT connect the 9 HTTP nodes directly to the Code node `[6k]`. Each trigger would fire the Code node separately, running the entire pipeline 9 times.
+- Set `numberInputs: 11` and wire each of the 11 HTTP nodes to a distinct port index 0–10
+- **Critical**: Do NOT connect the 11 HTTP nodes directly to the Code node `[6k]`. Each trigger would fire the Code node separately, running the entire pipeline 11 times.
 
 ### [6k] Fetch Price Bars (Code)
 Node name: **`Fetch Price Bars`** (exact — referenced by `02_compute_derived_metrics.js`)
@@ -328,7 +334,7 @@ LIMIT 30;
 - Condition: `{{ $("Set Session").first().json.session_type }}` equals `morning`
 
 ### [16a] Fetch Fundamentals (morning only)
-Loop over all 80 tickers using Finnhub. Respect 60 req/min rate limit.
+Loop over all 100 tickers using Finnhub. Respect 60 req/min rate limit.
 1. **Code node** — outputs 80 items, each `{ ticker, endpoint }`
 2. **HTTP Request** — Finnhub `/stock/metric?symbol={{ $json.ticker }}&metric=all`
 3. **HTTP Request** — Finnhub `/stock/recommendation?symbol={{ $json.ticker }}`
@@ -350,9 +356,9 @@ WHERE fetched_at >= NOW() - INTERVAL '48 hours';
 ### [20] Parse & Save All Signals
 Node name: **`Parse & Save All Signals`** (exact — referenced by `06_build_orchestrator_input.js`)
 - Node type: Code (`parse_save_all_signals.js`)
-- Input: 8 items from Merge All Signals (one per niche, each with `{ niche, session_id, message: { content: "..." } }`)
+- Input: 10 items from Merge All 10 Signals (one per niche, each with `{ niche, session_id, message: { content: "..." } }`)
 - Applies specialist confidence scaling using accuracy history from `Compute Derived Metrics`
-- Output: 8 items — each with full parsed signal data + `effective_confidence`, `short_picks`, `long_picks`
+- Output: 10 items — each with full parsed signal data + `effective_confidence`, `short_picks`, `long_picks`
 
 ### [21] Store All Signals
 - Node type: Postgres

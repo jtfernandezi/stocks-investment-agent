@@ -21,7 +21,7 @@ The Code nodes reference other nodes by exact name:
       ↓
 [3] Build Post-Mortem Input            (Code: post_mortem_build_input.js)
       ↓
-[4] Call Post-Mortem LLM              (Native OpenAI node v1.3 — GPT-4o-mini)
+[4] Call Post-Mortem LLM              (Native OpenAI node v1.3 — GPT-4o)
       ↓
 [5] Parse & Store Post-Mortem          (Code: post_mortem_store.js)
       ↓
@@ -68,7 +68,7 @@ Node name: **`Build Post-Mortem Input`** (exact — referenced by `post_mortem_s
 
 ### [4] Call Post-Mortem LLM
 - Node type: **Native OpenAI node v1.3**
-- Model: `gpt-4o-mini`
+- Model: `gpt-4o`
 - System prompt: `{{ $json.system_prompt }}`
 - User prompt: `{{ $json.user_prompt }}`
 - Temperature: 0.3

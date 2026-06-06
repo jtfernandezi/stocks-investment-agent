@@ -37,7 +37,11 @@ const priceMap = state.priceMap;
 const enrichedActions = (parsed.portfolio_actions || []).map(action => {
   const ticker    = action.ticker;
   const price     = priceMap[ticker] ? priceMap[ticker].current : null;
-  const stopPct   = action.stop_loss_pct || (priceMap[ticker] ? priceMap[ticker].trail_pct : 8);
+  // Enforce the swing-appropriate stop band [8%, 20%] regardless of the orchestrator's
+  // chosen stop — a 2–6 week hold must not carry a day-trader's tight stop that gets
+  // whipsawed out on normal volatility.
+  const rawStop   = action.stop_loss_pct || (priceMap[ticker] ? priceMap[ticker].trail_pct : 10);
+  const stopPct   = Math.min(20, Math.max(8, rawStop));
 
   // For SELL/COVER: use actual Alpaca position qty to guarantee full close.
   // For BUY/SHORT: calculate from size_usd + live price (LLM's share count uses stale prices).

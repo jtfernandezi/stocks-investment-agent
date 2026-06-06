@@ -32,15 +32,16 @@ Code nodes reference other nodes by exact name via `$("Node Name")`. Every name 
 
 ---
 
-## OpenAI node versions
+## LLM node types & output shapes
 
-Two different native OpenAI node versions are used — their output shapes differ. Do NOT swap them.
+Different nodes use different providers/shapes. Do NOT swap them.
 
-| Node | Version | Output shape |
-|------|---------|-------------|
-| Specialist [Niche] × 8 | v1.3 | `{ message: { content: "..." } }` |
-| Call Orchestrator LLM | v2.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
-| Letter LLM | v1.3 | `{ message: { content: "..." } }` |
+| Node | Type / Model | Output shape |
+|------|--------------|-------------|
+| Specialist [Niche] × 10 | HTTP Request → Gemini 2.5 Flash (cred `Gemini API`, JSON mode) | `{ candidates: [{ content: { parts: [{ text }] } }] }` → `Tag [Niche] Signal` normalizes to `{ message: { content } }` |
+| Call Orchestrator LLM | Native OpenAI v2.1 — GPT-5.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
+| Call Post-Mortem LLM | Native OpenAI v1.3 — GPT-4o | `{ message: { content: "..." } }` |
+| Letter LLM / Call Watchdog LLM | Native OpenAI v1.3 — GPT-4o-mini | `{ message: { content: "..." } }` |
 
 ---
 
@@ -94,7 +95,7 @@ Two different native OpenAI node versions are used — their output shapes diffe
 [18] Compute Derived Metrics           (Code: 02_compute_derived_metrics.js)
       ↓
   ┌──────────────────────────────────────────────────────────────┐
-  │  8 PARALLEL SPECIALIST BRANCHES (one per niche)               │
+  │  10 PARALLEL SPECIALIST BRANCHES (one per niche)              │
   │                                                               │
   │  Each branch:                                                 │
   │  [A] RSS Feed 1  (HTTP GET — niche-specific RSS URL)          │
@@ -104,7 +105,7 @@ Two different native OpenAI node versions are used — their output shapes diffe
   │  [D] Build [Niche] Message  (Code: build_specialist_message.js│
   │       — 3 constants differ per instance: NICHE, NICHE_DISPLAY,│
   │         TICKERS)                                              │
-  │  [E] Specialist [Niche]  (Native OpenAI node v1.3)            │
+  │  [E] Specialist [Niche]  (HTTP Request -> Gemini 2.5 Flash)   │
   └──────────────────────────────────────────────────────────────┘
       ↓ (live signal merge is a binary tree of 2-input v1 Merge nodes: 8 niches via
         Tag→L1→L2→Merge All Signals; Healthcare+Financials→Merge L1 Health Fin;

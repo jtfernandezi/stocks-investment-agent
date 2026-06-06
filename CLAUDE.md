@@ -12,7 +12,7 @@ AI paper trading system. Goal: beat SPY over 3 months with a $60,000 paper portf
 | Price data | Alpaca Data API (~350 daily bars, 100 stocks + SPY + 10 sector ETFs, start=2025-01-01) |
 | Fundamentals | Finnhub API (8:30 AM ET daily via Fundamentals Refresh workflow, 60 req/min limit) |
 | News | RSS feeds (2 per niche, up to 15 articles/niche/session) |
-| Specialist LLMs | GPT-4o (upgraded from GPT-4o-mini 2026-06-05) |
+| Specialist LLMs | Google Gemini 2.5 Flash (HTTP node; migrated from GPT-4o 2026-06-06 for ~3× cost cut) |
 | Orchestrator LLM | GPT-5.1 |
 | Dashboard | Next.js 15 on Vercel (`web/`) — 6 pages wired to Neon + Alpaca |
 
@@ -96,15 +96,18 @@ Code nodes reference each other by exact name via `$("Node Name")`. A typo silen
 - `Fetch Price Bars` — referenced by `compute_correlation_matrix.js` (reads `.bars`)
 - `Set Session` — also referenced by `compute_correlation_matrix.js` (morning-only gate)
 
-## Critical: OpenAI Node Versions
+## Critical: LLM Node Types & Output Shapes
 
-Two different native OpenAI node versions are in use — their output shapes differ. Do NOT swap them.
+Different nodes use different providers/shapes. Do NOT swap them.
 
-| Node | Version | Output shape |
-|------|---------|-------------|
-| Specialist [Niche] × 8 | v1.3 | `{ message: { content: "..." } }` |
-| Call Orchestrator LLM | v2.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
-| Call Post-Mortem LLM | v1.3 | `{ message: { content: "..." } }` |
+| Node | Type / Model | Output shape |
+|------|--------------|-------------|
+| Specialist [Niche] × 10 | **HTTP Request → Gemini 2.5 Flash** (cred `Gemini API`, header `x-goog-api-key`; JSON body built inline from `$json.system_prompt`/`user_prompt` with `responseMimeType: application/json`) | `{ candidates: [{ content: { parts: [{ text }] } }] }` — the `Tag [Niche] Signal` Code node normalizes this to `{ message: { content } }`, so `parse_save_all_signals.js` needs no change |
+| Call Orchestrator LLM | native OpenAI v2.1 — GPT-5.1 | `{ output: [{ content: [{ text: "..." }] }] }` |
+| Call Post-Mortem LLM | native OpenAI v1.3 — GPT-4o | `{ message: { content: "..." } }` |
+| Letter LLM / Call Watchdog LLM | native OpenAI v1.3 — GPT-4o-mini | `{ message: { content: "..." } }` |
+
+The Gemini key lives in the n8n credential `Gemini API` (id `Qv5tT8Y3Eoc6YBWZ`), not in the workflow JSON. To revert a specialist to OpenAI, restore the `@n8n/n8n-nodes-langchain.openAi` node + its `modelId`, and the Tag node's `r.message.content` fallback still works.
 
 ## Trade Actions
 
@@ -299,6 +302,10 @@ Full-system audit found the fund had been **deadlocked in ~100% cash since 2026-
 Added two niches (instead of swapping `data_centers`) to diversify away from the AI-beta cluster and feed the short book: **`healthcare`** (UNH, ELV, CVS, LLY, MRK, PFE, ABBV, ISRG, MDT, TMO — ETF XLV) and **`financials`** (JPM, BAC, WFC, C, GS, MS, SCHW, BLK, AXP, COF — ETF XLF). Both are low-correlated to tech and rich in two-sided/short candidates.
 
 n8n build (Main Analysis, 133→149 nodes): two new specialist branches (RSS1+RSS2 → Merge RSS → Build Message → Specialist GPT-4o → Tag Signal), each triggered by `Compute Derived Metrics`. The v1 binary signal merge tree was extended: existing 8 still flow to `Merge All Signals`; the 2 new Tags → new `Merge L1 Health Fin`; both → new `Merge All 10 Signals` → `Parse & Save All Signals` (rewired off Merge All Signals). Two new `Fetch Bars` nodes (triggered by `Collect Orders`) wired into `Merge Price Bars` (numberInputs 9→11); `Fetch Price Bars` sourceNodes extended; `Fetch Bars SPY` now carries XLV+XLF at limit=4400. Registry updated everywhere: `02` NICHES + NICHE_ETF, `08`/watchdog TICKER_NICHE, `post_mortem_build_input` SECTOR_ETF, fundamentals Prepare Tickers + Parse Earnings, web constants, orchestrator prompt (8→10). RSS: FierceHealthcare+FiercePharma / Fed-Press+WSJ-Markets (deep finance trade-press like American Banker had dead feeds).
+
+## Enhancements (2026-06-06) — Specialists migrated to Gemini 2.5 Flash
+
+All 10 `Specialist [Niche]` nodes moved from native OpenAI (GPT-4o) to **HTTP Request → `gemini-2.5-flash`** (`generativelanguage.googleapis.com/v1beta/.../generateContent`, JSON mode via `responseMimeType: application/json`). Cost: specialist layer ~$14/mo (4o) → **~$5/mo** (Gemini 2.5 Flash, thinking on; ~$2.5/mo if thinking disabled via `thinkingConfig.thinkingBudget: 0`). Quality validated in pre-flight: clean schema-correct JSON + correct leader/laggard pairs. Each `Tag [Niche] Signal` node now normalizes Gemini's `candidates[0].content.parts[0].text` (with an `r.message.content` fallback) into `{message:{content}}`, so `parse_save_all_signals.js` is unchanged. Key stored in n8n credential `Gemini API` (id `Qv5tT8Y3Eoc6YBWZ`, header `x-goog-api-key`) — not in the workflow JSON. Orchestrator stays GPT-5.1 (the dominant cost line); post-mortem GPT-4o; Letter + Watchdog GPT-4o-mini.
 
 ## Known Open Issues
 

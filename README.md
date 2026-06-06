@@ -14,7 +14,7 @@ Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/posi
 | Database | Neon (PostgreSQL) |
 | Trade execution | Alpaca Paper Trading API |
 | Dashboard | Next.js 15 on Vercel — 6 pages wired to Neon + Alpaca |
-| Specialist LLMs | GPT-4o |
+| Specialist LLMs | Google Gemini 2.5 Flash |
 | Orchestrator LLM | GPT-5.1 |
 | Fundamentals data | Finnhub API (free tier, morning refresh only) |
 | Price data | Alpaca Data API (~350 daily bars, all 100 stocks + SPY + 10 sector ETFs) |
@@ -24,7 +24,7 @@ Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/posi
 
 ### Agents
 
-**10 Specialist Analysts** (one per niche, GPT-4o)
+**10 Specialist Analysts** (one per niche, Gemini 2.5 Flash)
 - Input: sector news, price/momentum data, fundamentals, earnings calendar, own recent signals, own 30-day accuracy history
 - Output: sector direction (BULLISH/BEARISH/NEUTRAL), conviction (HIGH/MEDIUM/LOW), confidence (0–1), 2–3 long picks + a required laggard short pick (leader/laggard pairs) with thesis
 

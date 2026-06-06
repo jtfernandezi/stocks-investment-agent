@@ -56,8 +56,9 @@ Configure the API key directly in the node's credential settings.
 ```
 ALPACA_BASE_URL=https://paper-api.alpaca.markets/v2
 ALPACA_DATA_URL=https://data.alpaca.markets/v2
-OPENAI_SPECIALIST_MODEL=gpt-4o
 OPENAI_ORCHESTRATOR_MODEL=gpt-5.1
+# Specialists no longer use an env var — they call Gemini 2.5 Flash via an HTTP Request
+# node (model is in the node URL; key in the n8n credential "Gemini API").
 ```
 
 > **Note:** `POSTMORTEM_WEBHOOK_URL` is NOT needed. The post-mortem workflow is triggered via n8n's native Execute Workflow node (workflow-to-workflow execution), not HTTP webhook. Connect the "Trigger Post-Mortem" node directly to the Post-Mortem workflow ID in n8n.

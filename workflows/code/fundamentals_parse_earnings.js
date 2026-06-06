@@ -3,14 +3,16 @@
 // Outputs UPSERT SQL for stocks.earnings_calendar.
 
 const TICKERS = new Set([
-  'CRWD','PANW','ZS','OKTA','FTNT','S','CYBR','TMUS','QLYS','TENB',
+  'CRWD','PANW','ZS','OKTA','FTNT','S','CYBR','CHKP','QLYS','TENB',
   'LMT','RTX','NOC','GD','HII','LHX','KTOS','RCAT','PLTR','AXON',
   'CCJ','UEC','NXE','DNN','SMR','OKLO','CEG','VST','ETR','NEE',
-  'FCX','SCCO','TECK','HBM','VALE','MP','LTHM','ALB','SQM','LAC',
+  'FCX','SCCO','TECK','HBM','VALE','MP','AA','ALB','SQM','LAC',
   'ARM','AMAT','LRCX','KLAC','ON','TER','NXPI','MCHP','MPWR','SNPS',
   'ORCL','NOW','CRM','DDOG','SNOW','ADBE','NET','TEAM','WDAY','MDB',
   'XOM','CVX','COP','SLB','HAL','MPC','PSX','VLO','OXY','EOG',
   'EQIX','DLR','AMT','IREN','CORZ','VRT','SMCI','DELL','HPE','WDC',
+  'UNH','ELV','CVS','LLY','MRK','PFE','ABBV','ISRG','MDT','TMO',
+  'JPM','BAC','WFC','C','GS','MS','SCHW','BLK','AXP','COF',
 ]);
 
 const earningsArr = ($input.first().json.earningsCalendar || []).filter(

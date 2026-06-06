@@ -1,6 +1,6 @@
 # Stocks Investment Agent
 
-AI-powered paper trading system for individual US-listed stocks. Multi-agent architecture with 8 sector specialists and a portfolio manager orchestrator, competing against the S&P 500 over a 3-month period with a $60,000 paper portfolio.
+AI-powered paper trading system for individual US-listed stocks. Multi-agent architecture with 10 sector specialists and a portfolio manager orchestrator, competing against the S&P 500 over a 3-month period with a $60,000 paper portfolio.
 
 ## Objective
 
@@ -14,26 +14,26 @@ Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/posi
 | Database | Neon (PostgreSQL) |
 | Trade execution | Alpaca Paper Trading API |
 | Dashboard | Next.js 15 on Vercel — 6 pages wired to Neon + Alpaca |
-| Specialist LLMs | GPT-4o-mini |
+| Specialist LLMs | GPT-4o |
 | Orchestrator LLM | GPT-5.1 |
 | Fundamentals data | Finnhub API (free tier, morning refresh only) |
-| Price data | Alpaca Data API (252 daily bars, all 80 stocks + SPY) |
+| Price data | Alpaca Data API (~350 daily bars, all 100 stocks + SPY + 10 sector ETFs) |
 | News | RSS feeds (2 per niche, up to 15 articles merged per session) |
 
 ## Architecture
 
 ### Agents
 
-**8 Specialist Analysts** (one per niche, GPT-4o-mini)
-- Input: sector news, price/momentum data, fundamentals, earnings calendar, own 30-day accuracy history
-- Output: sector direction (BULLISH/BEARISH/NEUTRAL), conviction (HIGH/MEDIUM/LOW), confidence (0–1), 2–3 long picks + 1–2 short picks with thesis
+**10 Specialist Analysts** (one per niche, GPT-4o)
+- Input: sector news, price/momentum data, fundamentals, earnings calendar, own recent signals, own 30-day accuracy history
+- Output: sector direction (BULLISH/BEARISH/NEUTRAL), conviction (HIGH/MEDIUM/LOW), confidence (0–1), 2–3 long picks + a required laggard short pick (leader/laggard pairs) with thesis
 
 **1 Portfolio Manager Orchestrator** (GPT-5.1)
-- Input: 8 specialist signals, live portfolio state from Alpaca, earnings at-risk flags, correlation matrix, 5-session signal history per sector, feedback system data
+- Input: 10 specialist signals, live portfolio state from Alpaca, earnings at-risk flags, correlation matrix, 5-session signal history per sector, feedback system data
 - Output: BUY/SELL/SHORT/COVER actions, watchlist updates, portfolio review per open position
 
-**1 Post-Mortem Agent** (GPT-4o-mini, triggered after every SELL/COVER)
-- Runs attribution analysis on every closed position (4 components: sector accuracy, stock selection quality, entry timing, exit timing)
+**1 Post-Mortem Agent** (GPT-4o, triggered after every SELL/COVER)
+- Runs attribution analysis on every closed position (3 components: sector accuracy, entry timing, exit timing)
 - Generates one specific, actionable lesson stored in Neon
 - Feeds back into the orchestrator as calibrated intelligence
 
@@ -50,24 +50,26 @@ The system improves automatically over time without code changes:
 
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
-| Main analysis | Cron 3×/day (pre-market, midday, post-market) | Run all 8 specialists → orchestrator → execute trades |
+| Main analysis | Cron 3×/day (pre-market, midday, post-market) | Run all 10 specialists → orchestrator → execute trades |
 | Watchdog | Cron every 30 min at :10 and :40 (10:10 AM–3:40 PM ET) | Check for thesis flip (signal reversal) on open positions |
 | Post-mortem | Webhook, fires after every SELL/COVER | Attribution analysis + lesson generation |
 
 Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no price monitoring needed in n8n.
 
-## Niches (8) — 80 Stocks
+## Niches (10) — 100 Stocks
 
 | # | Niche | Tickers |
 |---|-------|---------|
-| 1 | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CYBR, TMUS, QLYS, TENB |
+| 1 | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CYBR, CHKP, QLYS, TENB |
 | 2 | Defense | LMT, RTX, NOC, GD, HII, LHX, KTOS, RCAT, PLTR, AXON |
 | 3 | Nuclear / Uranium | CCJ, UEC, NXE, DNN, SMR, OKLO, CEG, VST, ETR, NEE |
-| 4 | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, LTHM, ALB, SQM, LAC |
+| 4 | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, AA, ALB, SQM, LAC |
 | 5 | Semiconductors & EDA | ARM, AMAT, LRCX, KLAC, ON, TER, NXPI, MCHP, MPWR, SNPS |
 | 6 | Enterprise SaaS | ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB |
 | 7 | Oil & Gas | XOM, CVX, COP, SLB, HAL, MPC, PSX, VLO, OXY, EOG |
 | 8 | Data Centers & AI Infrastructure | EQIX, DLR, AMT, IREN, CORZ, VRT, SMCI, DELL, HPE, WDC |
+| 9 | Healthcare & Pharma | UNH, ELV, CVS, LLY, MRK, PFE, ABBV, ISRG, MDT, TMO |
+| 10 | Financials | JPM, BAC, WFC, C, GS, MS, SCHW, BLK, AXP, COF |
 
 ## Risk Management
 
@@ -77,7 +79,7 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 - **Max short exposure:** $12,000 (20% of portfolio)
 - **Max open positions:** 12 (longs + shorts combined)
 - **Max per sector:** up to 2 longs (2nd requires TREND pattern + ≤$5k size) + 1 short
-- **Trailing stops:** ATR × 2.5, set natively via Alpaca GTC orders
+- **Trailing stops:** ATR × 3, clamped 8–20%, set natively via Alpaca GTC orders
 - **Penalties (stack multiplicatively):** correlation >0.70 with open position, earnings ≤2 days, NOISE signal history, FIRST_SIGNAL — each reduces sizing one tier
 - **Thesis stop:** mandatory immediate exit when specialist flips direction
 - **Earnings exit:** default close before earnings ≤2 days unless exceptional conditions met
@@ -90,7 +92,7 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 | `portfolio_snapshots` | Portfolio state + P&L vs SPY per session |
 | `watchlist` | Stocks flagged for monitoring with entry trigger |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
-| `correlation_matrix` | Pairwise 90-day correlation for all 80 stocks |
+| `correlation_matrix` | Pairwise 90-day correlation for all 100 stocks |
 | `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus, price targets (morning refresh) |
 | `trade_lessons` | Post-mortem analysis + key lesson per closed trade |
 | `specialist_accuracy` | 30-day hit rate, scaling factor, calibration error per specialist |

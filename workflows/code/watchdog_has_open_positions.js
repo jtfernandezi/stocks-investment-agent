@@ -5,7 +5,7 @@
 
 const TICKER_NICHE = {
   CRWD:'cybersecurity',PANW:'cybersecurity',ZS:'cybersecurity',OKTA:'cybersecurity',
-  FTNT:'cybersecurity',S:'cybersecurity',CYBR:'cybersecurity',TMUS:'cybersecurity',
+  FTNT:'cybersecurity',S:'cybersecurity',CYBR:'cybersecurity',CHKP:'cybersecurity',
   QLYS:'cybersecurity',TENB:'cybersecurity',
   LMT:'defense',RTX:'defense',NOC:'defense',GD:'defense',HII:'defense',
   LHX:'defense',KTOS:'defense',RCAT:'defense',PLTR:'defense',AXON:'defense',
@@ -13,7 +13,7 @@ const TICKER_NICHE = {
   SMR:'nuclear_uranium',OKLO:'nuclear_uranium',CEG:'nuclear_uranium',VST:'nuclear_uranium',
   ETR:'nuclear_uranium',NEE:'nuclear_uranium',
   FCX:'copper_minerals',SCCO:'copper_minerals',TECK:'copper_minerals',HBM:'copper_minerals',
-  VALE:'copper_minerals',MP:'copper_minerals',LTHM:'copper_minerals',ALB:'copper_minerals',
+  VALE:'copper_minerals',MP:'copper_minerals',AA:'copper_minerals',ALB:'copper_minerals',
   SQM:'copper_minerals',LAC:'copper_minerals',
   ARM:'semiconductors',AMAT:'semiconductors',LRCX:'semiconductors',KLAC:'semiconductors',
   ON:'semiconductors',TER:'semiconductors',NXPI:'semiconductors',MCHP:'semiconductors',
@@ -26,6 +26,10 @@ const TICKER_NICHE = {
   EQIX:'data_centers',DLR:'data_centers',AMT:'data_centers',IREN:'data_centers',
   CORZ:'data_centers',VRT:'data_centers',SMCI:'data_centers',DELL:'data_centers',
   HPE:'data_centers',WDC:'data_centers',
+  UNH:'healthcare',ELV:'healthcare',CVS:'healthcare',LLY:'healthcare',MRK:'healthcare',
+  PFE:'healthcare',ABBV:'healthcare',ISRG:'healthcare',MDT:'healthcare',TMO:'healthcare',
+  JPM:'financials',BAC:'financials',WFC:'financials',C:'financials',GS:'financials',
+  MS:'financials',SCHW:'financials',BLK:'financials',AXP:'financials',COF:'financials',
 };
 
 const positions = $input.all().map(i => i.json);

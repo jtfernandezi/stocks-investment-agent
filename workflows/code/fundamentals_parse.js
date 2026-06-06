@@ -10,11 +10,17 @@ const metric = $('Fetch Metric').first().json.metric || {};
 // Analyst recommendations from Finnhub — most recent period first in the array
 let totalBuy = 0, totalHold = 0, totalSell = 0;
 try {
-  const recData = $('Fetch Recommendations').first().json;
-  // Finnhub returns an array sorted newest-first; each element is one consensus period
-  const recArr = Array.isArray(recData) ? recData : [];
-  if (recArr.length > 0) {
-    const r = recArr[0];
+  // n8n's HTTP node splits a JSON array response into one item per element, so
+  // $('Fetch Recommendations').first().json is a single period object — NOT the
+  // full array. The old Array.isArray() check therefore always failed and left
+  // analyst consensus at 0/0/0 for all 80 stocks. Reconstruct the list with
+  // .all() and take the most recent period (Finnhub returns one row per month).
+  const recArr = $('Fetch Recommendations').all()
+    .map(i => i.json)
+    .filter(x => x && x.period);
+  recArr.sort((a, b) => String(b.period).localeCompare(String(a.period)));  // newest first
+  const r = recArr[0];
+  if (r) {
     totalBuy  = (r.buy  || 0) + (r.strongBuy  || 0);
     totalHold = (r.hold || 0);
     totalSell = (r.sell || 0) + (r.strongSell || 0);

@@ -1,26 +1,49 @@
 // Node: Build Orchestrator Input
-// Position: After Parse & Save All Signals (receives 8 specialist items)
+// Position: After Parse & Save All Signals (receives 10 specialist items)
 // Assembles the full orchestrator prompt from all available context
 // Output: 1 item with system_prompt + user_prompt for OpenAI GPT-5.1
 
 const ctx              = $("Compute Derived Metrics").first().json;
 const specialistsRaw   = $("Parse & Save All Signals").all().map(i => i.json);
 
+let pickNewsItems = [];
+try {
+  const newsResp = $("Fetch Specialist Pick News").first().json;
+  pickNewsItems = newsResp.news || [];
+} catch(_) {}
+
 // Apply cold-start confidence cap before orchestrator sees the signals.
 // Specialists with < 10 sessions on record have no reliable calibration history.
 // Cap prevents uncalibrated confidence from triggering max-size trades.
 const specialists = specialistsRaw.map(s => {
   const accData      = (ctx.specialistEffectiveConf || {})[s.niche] || {};
-  const totalSignals = accData.total_signals || 0;
-  let coldStartCap   = null;
-  if      (totalSignals < 5)  coldStartCap = 0.72;
-  else if (totalSignals < 10) coldStartCap = 0.78;
-  const sessionsInDir = computeSessionsInDirection(s.direction, (ctx.signalsByNiche || {})[s.niche]);
+  // Warm-up is measured by signal-history DEPTH (how many signals this specialist
+  // has actually issued), NOT by closed-trade attribution. The old code read
+  // specialist_accuracy.total_signals, which only grows after trades close — but
+  // trades cannot open while capped below the 0.75 floor. That was a deadlock:
+  // the fund could not trade because it had not traded. Signal depth bootstraps out.
+  const signalDepth    = (ctx.signalCountByNiche || {})[s.niche] || 0;
+  const calibSamples   = accData.total_signals || 0;   // closed-trade calibration sample
+  const hasCalibration = calibSamples >= 5;
 
-  if (coldStartCap !== null && (s.effective_confidence || 0) > coldStartCap) {
-    return { ...s, effective_confidence: coldStartCap, cold_start: true, cold_start_signals: totalSignals, cold_start_cap: coldStartCap, sessions_in_direction: sessionsInDir };
+  // Cold-start cap by signal depth:
+  //   < 3 signals  → 0.72  (truly new — below the 0.75 trading floor; no trade)
+  //   3–9 signals  → 0.80  (warming — tradeable at min/mid size; no $8k/$6k tier)
+  //   ≥10 signals, not yet calibrated → 0.84 (up to mid size; full size unlocks
+  //                                            once closed trades calibrate scaling)
+  //   ≥10 signals, calibrated → no cap (scaling_factor already applied upstream)
+  let coldStartCap = null;
+  if      (signalDepth < 3)  coldStartCap = 0.72;
+  else if (signalDepth < 10) coldStartCap = 0.80;
+  else if (!hasCalibration)  coldStartCap = 0.84;
+
+  const sessionsInDir = computeSessionsInDirection(s.direction, (ctx.signalsByNiche || {})[s.niche]);
+  const inColdStart   = coldStartCap !== null;
+
+  if (inColdStart && (s.effective_confidence || 0) > coldStartCap) {
+    return { ...s, effective_confidence: coldStartCap, cold_start: true, cold_start_signals: signalDepth, cold_start_cap: coldStartCap, sessions_in_direction: sessionsInDir };
   }
-  return { ...s, cold_start: false, cold_start_signals: totalSignals, sessions_in_direction: sessionsInDir };
+  return { ...s, cold_start: inColdStart, cold_start_signals: signalDepth, sessions_in_direction: sessionsInDir };
 });
 
 // ── HELPER: Format positions ──────────────────────────────────────────────────
@@ -86,7 +109,7 @@ function formatSpecialistSignals(specialists) {
   return specialists.map(s => {
     const longPicks  = (s.long_picks  || []).map(p => `    LONG  ${p.ticker}: ${p.thesis} | Risk: ${p.key_risk} | Earnings: ${p.earnings_risk}`).join('\n');
     const shortPicks = (s.short_picks || []).map(p => `    SHORT ${p.ticker}: ${p.thesis} | Risk: ${p.key_risk} | Earnings: ${p.earnings_risk}`).join('\n');
-    const coldFlag   = s.cold_start ? ` ← COLD-START (${s.cold_start_signals} sessions, capped at ${s.cold_start_cap})` : '';
+    const coldFlag   = s.cold_start ? ` ← COLD-START (${s.cold_start_signals} signals, capped at ${s.cold_start_cap})` : '';
     const convFlag   = !s.cold_start && s.effective_confidence < 0.75 ? ' ← BELOW TRADING THRESHOLD' : '';
     const sidStr     = s.sessions_in_direction === 1 ? `1 (first session — tentative)` : `${s.sessions_in_direction} (confirmed)`;
     return [
@@ -208,6 +231,87 @@ function formatWatchlist(watchlist) {
   ).join('\n');
 }
 
+// ── HELPER: Format fundamentals ───────────────────────────────────────────────
+function formatFundamentals(tickers, fundamentalsMap) {
+  if (!tickers || tickers.length === 0) return '  No tickers to display.';
+  const lines = [];
+  for (const ticker of tickers) {
+    const f = fundamentalsMap[ticker];
+    if (!f) {
+      lines.push(`  ${ticker}: No data`);
+      continue;
+    }
+    const pe   = f.pe_ratio     != null ? `P/E ${parseFloat(f.pe_ratio).toFixed(1)}`                    : 'P/E N/A';
+    const gm   = f.gross_margin != null ? `Gross ${parseFloat(f.gross_margin).toFixed(1)}%`             : null;
+    const nm   = f.net_margin   != null ? `Net ${parseFloat(f.net_margin).toFixed(1)}%`                 : null;
+    const beta = f.beta         != null ? `β${parseFloat(f.beta).toFixed(2)}`                           : null;
+    const eps  = f.last_eps_surprise_pct != null
+      ? `EPS surp ${parseFloat(f.last_eps_surprise_pct) >= 0 ? '+' : ''}${parseFloat(f.last_eps_surprise_pct).toFixed(1)}%`
+      : null;
+    let consStr = null;
+    const b = f.analyst_buy, h = f.analyst_hold, s = f.analyst_sell;
+    if (b != null || h != null || s != null) {
+      const total  = (b || 0) + (h || 0) + (s || 0);
+      const buyPct = total > 0 ? Math.round((b || 0) / total * 100) : null;
+      consStr = `Consensus ${b || 0}B/${h || 0}H/${s || 0}S${buyPct != null ? ` (${buyPct}% buy)` : ''}`;
+    }
+    const parts = [pe, gm, nm, consStr, beta, eps].filter(Boolean);
+    lines.push(`  ${ticker}: ${parts.join(' | ')}`);
+  }
+  return lines.join('\n');
+}
+
+// ── HELPER: Format technicals ─────────────────────────────────────────────────
+function formatTechnicals(tickers, priceMap) {
+  if (!tickers || tickers.length === 0) return '  No tickers to display.';
+  return tickers.map(ticker => {
+    const p = priceMap[ticker];
+    if (!p) return `  ${ticker}: No price data`;
+
+    const rsiLabel = p.rsi14 == null ? 'N/A'
+      : p.rsi14 > 70 ? `${p.rsi14} (overbought)`
+      : p.rsi14 < 30 ? `${p.rsi14} (oversold)`
+      : `${p.rsi14} (neutral)`;
+
+    const sma50Str = p.sma50 != null
+      ? `${p.current >= p.sma50 ? '+' : ''}${((p.current - p.sma50) / p.sma50 * 100).toFixed(1)}% ${p.current >= p.sma50 ? 'above' : 'below'}`
+      : 'N/A (<50 bars)';
+
+    const sma200Str = p.sma200 != null
+      ? `${p.current >= p.sma200 ? '+' : ''}${((p.current - p.sma200) / p.sma200 * 100).toFixed(1)}% ${p.current >= p.sma200 ? 'above' : 'below'}`
+      : 'N/A (<200 bars)';
+
+    const pct52wStr = p.pct_52w != null ? `${p.pct_52w}th pct` : 'N/A';
+
+    return `  ${ticker}: RSI ${rsiLabel} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr}`;
+  }).join('\n');
+}
+
+// ── HELPER: Format pick news ──────────────────────────────────────────────────
+function formatPickNews(newsItems) {
+  if (!newsItems || newsItems.length === 0) return '  No recent news available.';
+  const byTicker = {};
+  for (const article of newsItems) {
+    for (const sym of (article.symbols || [])) {
+      if (!byTicker[sym]) byTicker[sym] = [];
+      byTicker[sym].push(article);
+    }
+  }
+  if (Object.keys(byTicker).length === 0) return '  No recent news available.';
+  return Object.entries(byTicker)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([ticker, articles]) => {
+      const items = articles.slice(0, 3).map(a => {
+        const date    = (a.created_at || '').substring(0, 10);
+        const summary = a.summary
+          ? ` — ${a.summary.substring(0, 150)}${a.summary.length > 150 ? '...' : ''}`
+          : '';
+        return `    [${date}] ${a.headline}${summary}`;
+      }).join('\n');
+      return `  ${ticker}:\n${items}`;
+    }).join('\n\n');
+}
+
 // ── HELPER: Format rotation summary ──────────────────────────────────────────
 function formatRotation(rotationSummary) {
   return rotationSummary.map(r =>
@@ -220,7 +324,7 @@ function formatRotation(rotationSummary) {
 // Keep in sync with the prompt file.
 const ORCHESTRATOR_SYSTEM_PROMPT = `You are the Portfolio Manager of an AI-driven paper trading fund with $60,000 in capital, benchmarked against the S&P 500 over a 3-month period. Your objective is simple and non-negotiable: generate returns that exceed SPY's cumulative return from the start of the experiment.
 
-You receive signals from 8 specialist analysts covering distinct sectors. Your job is to translate those signals into precise portfolio actions — which stocks to buy, which to short, which to hold, and which to close — while managing risk at the portfolio level.
+You receive signals from 10 specialist analysts covering distinct sectors. Your job is to translate those signals into precise portfolio actions — which stocks to buy, which to short, which to hold, and which to close — while managing risk at the portfolio level.
 
 ## YOUR MANDATE
 Beat the S&P 500. Not match it. Not protect capital at all costs. Generate alpha.
@@ -244,7 +348,7 @@ These are guidelines, not hard limits. State your regime read and resulting post
 
 ## INPUTS YOU RECEIVE
 
-### 1. SPECIALIST SIGNALS (8 sectors)
+### 1. SPECIALIST SIGNALS (10 sectors)
 Each specialist gives you:
 - Sector direction: BULLISH / BEARISH / NEUTRAL
 - Conviction: HIGH / MEDIUM / LOW
@@ -264,13 +368,13 @@ MEDIUM and LOW signals inform your watchlist but do not trigger trades.
 - Total long exposure, total short exposure, net exposure
 
 ### 3. FUNDAMENTALS (fetched daily at 8:30 AM ET)
-Fresh fundamentals are available for all 80 stocks: P/E ratio, P/B, P/S, gross margin, net margin, analyst consensus (buy/hold/sell counts), and analyst price target vs current price.
+Fundamentals are provided in section 6 of this prompt for all specialist-recommended picks and your open positions: P/E ratio, gross margin, net margin, analyst consensus (buy/hold/sell counts + % buy), beta, and last EPS surprise %.
 
 Use fundamentals to:
 - Avoid entering stocks trading at extreme P/E premium (>3× sector median) unless the thesis explicitly justifies the valuation and growth rate supports it.
-- Favor long entries where the analyst price target implies >15% upside.
-- Favor short entries where analyst consensus is deteriorating or price target implies downside.
-- Flag stocks with worsening margins quarter-over-quarter as higher-risk longs and better short candidates.
+- Favor long entries where analyst consensus is strongly buy (>70% buy) and aligned with the specialist signal.
+- Favor short entries where analyst consensus is deteriorating (high hold/sell count) or majority hold/sell.
+- Flag stocks with negative net margins as higher-risk longs and better short candidates in downtrends.
 - Do not veto a valid HIGH conviction TREND signal solely on valuation — but document the valuation risk in the thesis and apply tighter stop sizing.
 
 ### 4. EARNINGS AT-RISK
@@ -351,9 +455,10 @@ Where scaling_factor = hit_rate_30d / avg_reported_confidence_30d
 - scaling_factor < 0.90: specialist is overconfident — signals underperforming stated confidence. Discount accordingly.
 - scaling_factor < 0.70: specialist is significantly miscalibrated. Even a HIGH conviction signal should be treated as MEDIUM. Do not size at the $8k tier.
 
-**Cold-start cap:** A specialist flagged COLD-START has fewer than 10 sessions on record and no reliable calibration history. Its effective_confidence has been pre-capped before you see it:
-- 0–4 sessions: capped at 0.72 — below the trading threshold. Do not trade on this signal.
-- 5–9 sessions: capped at 0.78 — minimum size only ($5k long / $3k short).
+**Cold-start cap:** A specialist flagged COLD-START does not yet have enough signal history (or closed-trade calibration) to justify full-size trades. Its effective_confidence has been pre-capped before you see it:
+- Fewer than 3 signals on record: capped at 0.72 — below the trading threshold. Do not trade on this signal.
+- 3–9 signals on record: capped at 0.80 — tradeable, but minimum/mid size only (never the $8k long / $6k short tier).
+- 10+ signals but no closed-trade calibration yet: capped at 0.84 — up to mid size; the full $8k long / $6k short tier unlocks once the specialist has a calibrated track record from closed trades.
 These caps are already applied in the number you see. Do not override them based on signal quality — the specialist has not yet earned the track record to justify higher confidence.
 
 **Always use effective_confidence (not raw reported_confidence) when applying sizing rules.**
@@ -368,11 +473,11 @@ Example:
   REVERSAL    → 61% / +9.4% / -5.5% / +4.1%   ← positive EV, valid entry
   FIRST_SIGNAL→ 44% / +7.1% / -6.8% / +0.1%   ← near-zero EV, require confirmation
 
-Rules:
-- Negative EV pattern → do NOT open new positions, regardless of signal quality.
-- EV < 1.0% → apply noise penalty (reduce one tier).
-- EV > 5.0% with win_rate > 60% → validated edge, prioritize over other entries.
-- Fewer than 5 trades for a pattern → treat EV as unreliable, apply standard rules.
+Rules (apply ONLY to patterns with ≥5 closed trades — below that the EV is statistical noise):
+- Negative EV pattern with ≥5 trades → do NOT open new positions, regardless of signal quality.
+- EV < 1.0% with ≥5 trades → apply noise penalty (reduce one tier).
+- EV > 5.0% with win_rate > 60% and ≥5 trades → validated edge, prioritize over other entries.
+- Fewer than 5 trades for a pattern → EV is unreliable; IGNORE it and apply standard conviction rules. Never block a trade on a negative EV derived from fewer than 5 trades — early in the experiment this would freeze the book.
 
 #### 7c. Recent Trade Lessons (trades table, last 5 closed)
 The post-mortem agent generates a structured attribution after each closed trade. Each entry shows:
@@ -394,6 +499,30 @@ Section 4d summarizes aggregate performance from the last 5 closed trades: overa
 - Identify which niches and patterns are generating edge in THIS portfolio specifically (may differ from historical EV in 7b due to sample size and market regime).
 - If a pattern shows 0% win rate in your closed trades, treat it as a hard negative EV signal regardless of what 7b shows — your live experience overrides the historical prior.
 - Fewer than 5 trades per category makes the stats directional, not definitive. Weight them accordingly.
+
+### 8. RECENT NEWS (specialist picks)
+Up to 50 most recent news articles covering all specialist-recommended tickers, fetched at session time from Alpaca's news feed. Provided in section 7 of this prompt, grouped by ticker.
+
+Use news to:
+- Validate or challenge the specialist thesis — does the news support or contradict the recommended direction?
+- Catch breaking developments the RSS feeds may have missed (Alpaca news is fetched fresh each session)
+- Flag stocks with significant negative news before entering a long, or meaningful positive news before entering a short
+- Do not treat a single headline as a thesis reversal — look for a pattern across multiple articles. One bad article does not override a HIGH conviction TREND signal.
+- If news directly contradicts the specialist thesis (e.g., specialist is BULLISH but news shows a major contract loss or earnings miss), document the conflict in your thesis and reduce size one tier or skip.
+
+### 9. TECHNICALS (specialist picks + open positions)
+RSI(14), 50-day and 200-day simple moving averages, and 52-week range percentile for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
+
+Use technicals to:
+- **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier unless the TREND pattern is very strong. For shorts, overbought RSI confirms the setup.
+- **RSI < 30 (oversold):** a short entry here is risky — a bounce is likely. For longs, oversold RSI on a BULLISH signal is a high-conviction entry point.
+- **Price above 50d MA:** stock is in a short-term uptrend. Confirms a BULLISH long thesis.
+- **Price below 50d MA:** stock is in a short-term downtrend. Confirms a BEARISH short thesis. A BULLISH signal on a stock below its 50d MA needs stronger conviction — document the divergence.
+- **Price above 200d MA:** long-term uptrend intact. Strong confirmation for longs.
+- **Price below 200d MA:** long-term downtrend. Shorts are favored; longs require exceptional catalyst.
+- **52w percentile > 90th:** stock is near all-time highs — momentum is strong but risk/reward is compressed for new longs.
+- **52w percentile < 10th:** stock is near 52-week lows — falling knife risk for longs; natural short setup if the thesis is deteriorating.
+- Do not veto a HIGH conviction TREND signal solely on technicals — but document conflicts and apply a size tier reduction if two or more technical factors oppose the trade direction.
 
 ## POSITION SIZING RULES
 
@@ -457,7 +586,7 @@ If a position has gained >20%: consider trimming half and holding the rest with 
 ### Step 1 — Portfolio Review
 For every open position:
 1. Is the specialist direction still aligned with your thesis?
-2. Has the specialist flipped to BEARISH? → Strong signal to exit; act unless there is compelling counterevidence (e.g., 7 of 8 specialists still bullish, stop already at critical proximity, position very profitable with intact macro thesis).
+2. Has the specialist flipped to BEARISH? → Strong signal to exit; act unless there is compelling counterevidence (e.g., 8 of 10 specialists still bullish, stop already at critical proximity, position very profitable with intact macro thesis).
    Has the specialist flipped to NEUTRAL? → Assess sessions_in_direction. If sessions_in_direction: 1 (first session in this direction), weigh whether news has genuinely changed, what other specialists say, and how close the stop is before deciding. If sessions_in_direction: 2+, the shift is confirmed — lean toward exiting unless a concrete pending catalyst justifies holding.
 3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Strong case to exit.
 4. Earnings ≤2 days? → Evaluate earnings risk — lean toward closing.
@@ -501,13 +630,14 @@ For each HIGH conviction signal (effective_confidence ≥ 0.75):
 8. On watchlist from prior session? → Priority entry.
 9. Sector rotation momentum confirms signal? → Confirms entry. Contradicts? → Caution.
 10. Recent trade lessons repeat a documented mistake? → Apply penalty. Replicates validated winner? → Confirm entry.
-11. Fundamentals check: extreme valuation without growth justification → document risk. Analyst target implies >15% upside → confirms entry.
+11. Fundamentals check: extreme valuation without growth justification → document risk. Strong analyst consensus (>70% buy) aligned with the signal direction → confirms entry; majority hold/sell consensus on a long, or on a short → supports caution/short.
 
 ### Step 3 — Short Book Review
-After reviewing longs, explicitly assess BEARISH signals:
-- Which sectors have BEARISH or REVERSAL signals? These are short candidates.
-- Is net long exposure >80% of portfolio? Actively look for short opportunities to reduce beta.
-- A portfolio with 0 shorts and 12 longs is not a long/short fund. This is acceptable ONLY if every BEARISH signal was explicitly evaluated and rejected with reasoning.
+After reviewing longs, build the short book from two distinct sources:
+- **Bearish sectors:** Which sectors have BEARISH or REVERSAL signals? Short the named short_picks per the sizing rules.
+- **Relative-value pairs:** In ANY high-conviction sector (effective_confidence ≥ 0.75) — including BULLISH and NEUTRAL ones — the specialist names a relative laggard in short_picks. You may short that laggard against a long in the same sector's leader. This long-leader / short-laggard pair is market-neutral: it profits from the spread between the two names regardless of where the index goes, and it cuts net beta. Use the sector's effective_confidence as the conviction for the short leg, size it per the short sizing rules, and respect the 1-short-per-sector cap (a long + a short in the same sector is permitted). Prefer pairs where the laggard has a concrete deterioration thesis (decelerating growth, margin compression, share loss) — not merely weaker momentum. Pairs are the primary way this fund generates alpha without taking on index beta; pursue them actively.
+- Is net long exposure >80% of portfolio? Build pairs and outright shorts to bring net beta down.
+- A portfolio with 0 shorts and many longs is not a long/short fund. Acceptable ONLY if every short_pick and BEARISH signal was explicitly evaluated and rejected with reasoning.
 
 ### Step 4 — Cash Management
 - Cash > $15,000 with unacted HIGH conviction signals → explain why not deploying.
@@ -604,6 +734,16 @@ Respond ONLY with valid JSON. No markdown, no backticks, no preamble.
   "orchestrator_summary": "4-6 sentence summary covering: portfolio state, key decisions made, short book status, current positioning vs SPY benchmark, and regime assessment"
 }`;
 
+// ── CANDIDATE TICKERS FOR FUNDAMENTALS ───────────────────────────────────────
+// All tickers the orchestrator is evaluating: specialist picks + open positions
+const candidateTickers = [...new Set([
+  ...specialists.flatMap(s => [
+    ...(s.long_picks  || []).map(p => p.ticker),
+    ...(s.short_picks || []).map(p => p.ticker),
+  ]),
+  ...ctx.positions.map(p => p.symbol),
+])].sort();
+
 // ── BUILD USER PROMPT ─────────────────────────────────────────────────────────
 const account  = ctx.account;
 const isOpen   = specialists.length > 0;  // market open status comes from orchestrator output
@@ -693,6 +833,21 @@ ${Object.keys(ctx.correlationFlags).length > 0
 ${ctx.earningsAtRisk.length > 0
   ? ctx.earningsAtRisk.map(e => `  ${e.ticker}: ${e.risk_level} — earnings in ${e.days_until} days (${e.earnings_date})`).join('\n')
   : '  No earnings at-risk in open positions.'}
+
+---
+
+## 6. FUNDAMENTALS (specialist picks + open positions)
+${formatFundamentals(candidateTickers, ctx.fundamentalsMap)}
+
+---
+
+## 7. RECENT NEWS (specialist picks)
+${formatPickNews(pickNewsItems)}
+
+---
+
+## 8. TECHNICALS (specialist picks + open positions)
+${formatTechnicals(candidateTickers, ctx.priceMap)}
 
 ---
 

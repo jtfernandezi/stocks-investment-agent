@@ -4,7 +4,7 @@
 
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|---------|
-| Main Analysis | `main_analysis_blueprint.md` | Cron 3×/day | Run 8 specialists → orchestrator → execute trades |
+| Main Analysis | `main_analysis_blueprint.md` | Cron 3×/day | Run 10 specialists → orchestrator → execute trades |
 | Watchdog | `watchdog_blueprint.md` | Cron every 30 min (10:00 AM–3:30 PM ET) | Detect thesis-flip signals, trigger orchestrator to decide close/hold |
 | Post-Mortem | `post_mortem_blueprint.md` | Webhook (called by Main Analysis **and** Watchdog) | Attribution analysis on every closed trade |
 
@@ -56,7 +56,7 @@ Configure the API key directly in the node's credential settings.
 ```
 ALPACA_BASE_URL=https://paper-api.alpaca.markets/v2
 ALPACA_DATA_URL=https://data.alpaca.markets/v2
-OPENAI_SPECIALIST_MODEL=gpt-4o-mini
+OPENAI_SPECIALIST_MODEL=gpt-4o
 OPENAI_ORCHESTRATOR_MODEL=gpt-5.1
 ```
 

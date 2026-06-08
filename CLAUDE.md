@@ -307,6 +307,10 @@ n8n build (Main Analysis, 133→149 nodes): two new specialist branches (RSS1+RS
 
 All 10 `Specialist [Niche]` nodes moved from native OpenAI (GPT-4o) to **HTTP Request → `gemini-2.5-flash`** (`generativelanguage.googleapis.com/v1beta/.../generateContent`, JSON mode via `responseMimeType: application/json`). Cost: specialist layer ~$14/mo (4o) → **~$5/mo** (Gemini 2.5 Flash, thinking on; ~$2.5/mo if thinking disabled via `thinkingConfig.thinkingBudget: 0`). Quality validated in pre-flight: clean schema-correct JSON + correct leader/laggard pairs. Each `Tag [Niche] Signal` node now normalizes Gemini's `candidates[0].content.parts[0].text` (with an `r.message.content` fallback) into `{message:{content}}`, so `parse_save_all_signals.js` is unchanged. Key stored in n8n credential `Gemini API` (id `Qv5tT8Y3Eoc6YBWZ`, header `x-goog-api-key`) — not in the workflow JSON. Orchestrator stays GPT-5.1 (the dominant cost line); post-mortem GPT-4o; Letter + Watchdog GPT-4o-mini.
 
+## Enhancements (2026-06-08) — Watchlist `direction` constraint fixed
+
+The `stocks.watchlist` write (`Build Watchlist SQL` — DELETE + INSERT in one transaction) had been silently failing **every session since 2026-06-03**, freezing the watchlist on stale `2026-06-03_close` data. Root cause: the 2026-06-03 schema change switched the orchestrator's watchlist `direction` output from `long`/`short` to `BULLISH`/`BEARISH` (to match DB + UI), but the DB CHECK constraint was never updated — it still read `CHECK (direction IN ('long','short'))`. The INSERT threw on every `BULLISH`/`BEARISH` row; because DELETE + INSERT share a transaction, the failure rolled back the DELETE too, so the old rows survived untouched and no new ones ever landed. The whole pipeline already spoke `BULLISH`/`BEARISH` (orchestrator prompt in `06`, passthrough in `09_process_post_trade.js`, Build Watchlist SQL, `/api/watchlist/route.ts`, `research/page.tsx` styling + ↑/↓ icons) — the constraint was the single lagging piece. Fix (DB-only, no code/n8n change): `ALTER TABLE stocks.watchlist DROP CONSTRAINT watchlist_direction_check; ADD ... CHECK (direction IN ('BULLISH','BEARISH'));`. Stale `2026-06-03_close` rows deleted; next close session repopulates cleanly.
+
 ## Known Open Issues
 
 None blocking. First 10-niche session is 2026-06-06 9:30 AM (healthcare/financials fundamentals populate at the 8:30 AM refresh; until then those tickers show "No data" — graceful, the specialist falls back to price/technicals/news).
@@ -384,7 +388,7 @@ All four workflows activated and running autonomously.
 |-------|---------|
 | `specialist_signals` | Raw signal output per niche per session. Includes `effective_confidence` and `scaling_factor` as explicit columns (computed in `parse_save_all_signals.js` from specialist accuracy calibration). |
 | `portfolio_snapshots` | Portfolio state + P&L vs SPY per session. `positions_json` holds all positions (long + short) with a `side` field. `orchestrator_summary` and `short_positions_json` dropped. |
-| `watchlist` | Stocks flagged for monitoring (replaced entirely each session). Includes `trigger_condition` (specific entry condition from orchestrator `trigger` field) and `session_id` (which session added this item). |
+| `watchlist` | Stocks flagged for monitoring (replaced entirely each session). Includes `trigger_condition` (specific entry condition from orchestrator `trigger` field) and `session_id` (which session added this item). `direction` CHECK constraint is `('BULLISH','BEARISH')` (fixed 2026-06-08 — was `('long','short')`, silently rejecting every write since 2026-06-03). |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
 | `correlation_matrix` | Pairwise 90-day correlation for all 100 stocks |
 | `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus (buy/hold/sell counts). `price_target_*` and `next_earnings_date` dropped — always NULL. |

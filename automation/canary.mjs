@@ -17,7 +17,6 @@ import { neon } from '@neondatabase/serverless';
 const COLD_START_CAP = 0.72;   // deadlock fingerprint: every specialist pinned here
 const EXPECTED_NICHES = 10;
 const WATCHLIST_STALE_DAYS = 4;
-const EARLIEST_JUDGE_MIN = 10 * 60 + 45; // 10:45 ET — after the 9:30 morning session lands
 
 // ── time helpers (America/New_York) ──────────────────────────────────────────
 const etDate = d => new Intl.DateTimeFormat('en-CA',
@@ -27,7 +26,7 @@ function nowET() {
   const t = new Intl.DateTimeFormat('en-GB',
     { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
   const [h, m] = t.split(':').map(Number);
-  return { dateStr: etDate(now), minutes: h * 60 + m, clock: t };
+  return { dateStr: etDate(now), clock: t };
 }
 
 async function sendTelegram(text) {
@@ -86,7 +85,6 @@ async function isTradingDay(today) {
     console.log('[canary] non-trading day — integrity checks skipped, all good.');
     process.exit(0);
   }
-  const canJudgeSession = et.minutes >= EARLIEST_JUDGE_MIN;
   const issues = [];
 
   // ── CHECK: pipeline ran today (morning session present) ─────────────────────
@@ -99,7 +97,7 @@ async function isTradingDay(today) {
       ORDER BY created_at DESC`;
     const today_rows = rows.filter(r => etDate(new Date(r.created_at)) === today);
     latestSessionRow = rows[0] || null;
-    if (canJudgeSession && today_rows.length === 0) {
+    if (today_rows.length === 0) {
       const last = latestSessionRow
         ? `last session: ${latestSessionRow.session_id} (${etDate(new Date(latestSessionRow.created_at))})`
         : 'no recent sessions at all';
@@ -121,7 +119,7 @@ async function isTradingDay(today) {
       issues.push('No specialist_signals found at all — signal pipeline may be broken.');
     } else {
       const sigToday = etDate(new Date(sig.ts)) === today;
-      if (sig.n < EXPECTED_NICHES && (sigToday || canJudgeSession)) {
+      if (sig.n < EXPECTED_NICHES && sigToday) {
         issues.push(`Latest session "${sig.session}" has only ${sig.n}/${EXPECTED_NICHES} specialist signals — specialist node(s) failed.`);
       }
       if (sig.maxec != null && sig.maxec <= COLD_START_CAP) {
@@ -134,7 +132,7 @@ async function isTradingDay(today) {
   try {
     const [snap] = await sql`SELECT max(created_at) AS last_snap FROM stocks.portfolio_snapshots`;
     const lastSnapToday = snap?.last_snap && etDate(new Date(snap.last_snap)) === today;
-    if (canJudgeSession && !lastSnapToday) {
+    if (!lastSnapToday) {
       const when = snap?.last_snap ? etDate(new Date(snap.last_snap)) : 'never';
       issues.push(`No portfolio snapshot today (last: ${when}) — Process Post-Trade / Store Portfolio Snapshot may be failing.`);
     }

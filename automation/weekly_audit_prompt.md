@@ -14,10 +14,10 @@ This is a LIVE trading system. You run with no human watching. You must be incap
 
 3. **Alpaca: GET only.** You may GET positions/orders/account/calendar (keys in `$ALPACA_API_KEY`/`$ALPACA_SECRET_KEY`). NEVER POST/DELETE an order or position. You never trade.
 
-4. **git: no push, no merge, no main-code-commits.**
-   - You MAY commit files under `audits/` to `main` (documentation only — cannot affect production).
-   - ALL code changes (anything outside `audits/`) go on a branch named `audit/<YYYY-MM-DD>` ONLY.
-   - NEVER `git push`. NEVER `git merge`. NEVER commit a code change to `main`. NEVER force anything.
+4. **git: branch + Pull Request only — never touch main directly.**
+   - Put ALL changes (the report under `audits/` AND any Type A code fix) on a new branch `audit/<YYYY-MM-DD>`.
+   - Commit, `git push` that branch, and open a Pull Request against `main` with `gh pr create`.
+   - NEVER push to `main`. NEVER `git merge` or merge the PR. NEVER force-push. A human reviews and merges the PR.
 
 5. **Type B (structural) ideas are NEVER coded.** Big/architectural changes (new data source, drop a niche, rework orchestrator logic, change a feedback formula) are written into the report and backlog as proposals for the human to decide — you do NOT implement them, not even on a branch.
 
@@ -33,7 +33,7 @@ Before analyzing fresh data, read your own memory:
 
 - `ls audits/` and read the **2 most recent** `audits/*.md` reports.
 - Read `audits/IMPROVEMENT_BACKLOG.md` in full.
-- Check `automation/logs/canary.log` (tail it) — did the daily canary run each weekday? Were there alarms?
+- Check the daily canary's recent health: in CI run `gh run list --workflow=daily-canary.yml --limit 7 --json conclusion,createdAt,displayTitle`; locally `tail automation/logs/canary.log`. Did it run each weekday? Any failures? (It alarms via Telegram on failure and is silent on success, so a clean run history = healthy.)
 
 Hold these questions throughout:
 - **Were last week's proposed Type A fixes applied?** (Check `git log --oneline -20` and the live n8n / code state.) If applied — did the metric they targeted actually improve? If not applied — should you re-raise or drop them?
@@ -128,16 +128,21 @@ Let `DATE=$(TZ=America/New_York date +%F)`.
 <the ranked list. **Top bet** called out. each tagged impact/effort/risk.>
 
 ## How to act on this
-- Review code fixes:  git diff main..audit/<DATE>
-- Accept:  git checkout main && git merge audit/<DATE>   (then apply n8n changes per CLAUDE.md sync rules)
-- Reject:  git branch -D audit/<DATE>
+- Review the Pull Request: <PR URL>
+- Accept: merge the PR (then apply any n8n code-node changes per CLAUDE.md sync rules)
+- Reject: close the PR without merging
 ```
 
 **(b) Update `audits/IMPROVEMENT_BACKLOG.md`:** add new Type B ideas (dedup against what's already there — do NOT re-add an idea already listed), re-rank, and mark the status of prior items (proposed / applied / worked / didn't / dropped). This is the institutional memory.
 
-**(c) git (only if working tree was clean):**
-   - `git add audits/ && git commit -m "audit <DATE>: report + backlog"` on `main` (docs only).
-   - If there is ≥1 Type A fix: `git checkout -b audit/<DATE>`, apply the code edits, `git add -A && git commit -m "audit <DATE>: proposed Type A fixes"`, then `git checkout main`. If zero Type A fixes, skip the branch.
+**(c) git — branch + PR (skip entirely if the working tree was already dirty at start):**
+   - `git checkout -b audit/<DATE>`
+   - Make sure the report + backlog (`audits/`) and any Type A code edits are written.
+   - `git add -A && git commit -m "audit <DATE>: report, backlog, and <N> Type A fix(es)"`
+   - `git push -u origin audit/<DATE>`
+   - Open a PR (do NOT merge it): `gh pr create --base main --head audit/<DATE> --title "Weekly audit <DATE>" --body "<scorecard + Type A list + top Type B idea>"`
+   - Capture the PR URL from the `gh pr create` output for the digest.
+   - Always create the PR even if there are zero Type A fixes — the report + backlog update are the record and should be reviewable.
 
 **(d) Send the Telegram digest** via `bash automation/notify.sh "<text>"`. Keep it tight and skimmable (it's a phone notification). Format:
 
@@ -150,17 +155,17 @@ PV $58.8k · alpha +1.3% vs SPY · 4 open
 ⚠️ Top issues:
 - <the 1-2 things that matter most>
 
-🔧 Type A fixes proposed: <N> (branch audit/<DATE>)
+🔧 Type A fixes proposed: <N>
 💡 Top idea: <one line>
 
-Full report: audits/<DATE>.md
-Review: git diff main..audit/<DATE>
+📋 Review & merge the PR:
+<PR URL>
 ```
 
-If anything blocked you (dirty tree, an API down), say so explicitly in the digest.
+If anything blocked you (dirty tree, an API down, push/PR failed), say so explicitly in the digest.
 
 ═══════════════════════════════════════════════════════════════════════════
 ## 5. FINISH
 ═══════════════════════════════════════════════════════════════════════════
 
-End on `main` with the working tree clean (aside from your committed report). Print a final line: `AUDIT COMPLETE — <DATE> — <N> Type A, <M> Type B, scorecard <...>`. Do not ask questions — there is no one to answer. Use your best judgment and document your reasoning in the report.
+Leave `main` untouched (all your changes are on the `audit/<DATE>` branch and in its PR). Print a final line: `AUDIT COMPLETE — <DATE> — <N> Type A, <M> Type B, scorecard <...>`. Do not ask questions — there is no one to answer. Use your best judgment and document your reasoning in the report.

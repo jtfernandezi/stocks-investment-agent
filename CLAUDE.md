@@ -30,6 +30,17 @@ Schedule Trigger → Fetch Market Status (Finnhub) → Is Market Open? → [clos
 **Post-Mortem** — triggered via Execute Workflow after every SELL/COVER (not HTTP webhook) — workflow ID: `BtVZfEGwbsDpOczg`
 3-component attribution (A: Sector Accuracy, B: Entry Timing, C: Exit Timing) → one `key_lesson` → updates `trade_lessons`, `specialist_accuracy`, `pattern_performance`
 
+## Audit Automation (self-improving layer — runs in GitHub Actions, not n8n)
+
+A meta layer that watches the fund and proposes improvements. **Cloud-hosted on GitHub Actions so it runs with the Mac off.** Full docs: `automation/README.md`.
+
+- **Daily canary** (`.github/workflows/daily-canary.yml` → `automation/canary.mjs`) — weekdays 16:07 UTC (~11 AM–12 PM ET). Deterministic integrity check (no LLM) for the silent-failure class (cash deadlock, frozen watchlist, partial signals, `effective_confidence` pinned ≤0.72). Silent when healthy; Telegram alarm only on failure.
+- **Weekly audit** (`.github/workflows/weekly-audit.yml` → headless Claude Code running `automation/weekly_audit_prompt.md`) — Sundays 06:11 UTC (00:11 America/Mexico_City, overnight to avoid daytime token contention). 7-lever review (alive / edge / specialist calibration / orchestrator judgment / guardrails / data / system-improvement), longitudinal (reads prior `audits/*.md` + `audits/IMPROVEMENT_BACKLOG.md`), **opens a PR** with Type A tunable fixes + the report; Type B structural ideas go to the backlog only (never auto-coded). Telegram digest links the PR.
+
+**Cannot break the fund (by construction):** read-only `audit_ro` Neon role (SELECT-only; the DB itself rejects writes); the weekly audit runs with MCP disabled (`--strict-mcp-config` + `automation/empty-mcp.json`) so it can't reach a writable Neon MCP; n8n/Alpaca are GET-only by mandate; PR isolation — never pushes to main, never merges, never trades. Worst case = a Telegram you ignore + a PR you close. Auth via `CLAUDE_CODE_OAUTH_TOKEN` (Claude subscription token); model defaults to `sonnet` for quota reliability (opus can hit the session cap mid-run).
+
+Secrets: 9 GitHub repo secrets + `~/.config/stocks-audit/secrets.env` (local, chmod 600, for manual `automation/run_*.sh` runs). Local launchd agents (`com.stocks.*`) were decommissioned 2026-06-09 — do NOT re-enable them or jobs double-fire. Telegram bot: @trade_stocks_ai_bot.
+
 ## Code Node Files
 
 | File | Workflow | n8n Node |

@@ -7,3 +7,9 @@ __pycache__/
 .venv/
 .vercel
 .claude/
+
+# audit automation
+automation/logs/
+secrets.env
+*.tmp.mjs
+.tmp_*.mjs

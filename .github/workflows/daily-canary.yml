@@ -1,0 +1,34 @@
+name: Daily Canary
+
+# Deterministic integrity check (no LLM). Catches the silent-failure class
+# (cash deadlock, frozen watchlist, partial signals, swallowed query errors).
+# Read-only (audit_ro role). Silent when healthy; Telegram alarm only on failure.
+# Runs in the cloud so it works with the Mac off.
+
+on:
+  schedule:
+    # 16:07 UTC on weekdays = ~11:07 ET (EST) / ~12:07 ET (EDT) — always after
+    # the canary's internal 10:45-ET gate and after the 9:30 ET morning session.
+    - cron: "7 16 * * 1-5"
+  workflow_dispatch: {}   # allow manual runs (no Claude tokens used)
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install deps
+        run: cd automation && npm ci
+      - name: Run canary
+        env:
+          AUDIT_DATABASE_URL: ${{ secrets.AUDIT_DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
+        run: node automation/canary.mjs

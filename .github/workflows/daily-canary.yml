@@ -7,9 +7,10 @@ name: Daily Canary
 
 on:
   schedule:
-    # 16:07 UTC on weekdays = ~11:07 ET (EST) / ~12:07 ET (EDT) — always after
-    # the canary's internal 10:45-ET gate and after the 9:30 ET morning session.
-    - cron: "7 16 * * 1-5"
+    # 21:30 UTC on weekdays = 4:30 PM ET — 30 min after market close.
+    # All three Main Analysis sessions (9:30 AM, 12 PM, 3:50 PM) have completed,
+    # so the canary sees the full day's signals, snapshot, and watchlist.
+    - cron: "30 21 * * 1-5"
   workflow_dispatch: {}   # allow manual runs (no Claude tokens used)
 
 jobs:

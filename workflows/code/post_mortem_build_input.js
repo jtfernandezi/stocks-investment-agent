@@ -33,10 +33,13 @@ if (isLong) {
   pnlPct = entryPrice > 0 ? ((entryPrice - exitPrice) / entryPrice) * 100 : 0;
 }
 
-// Actual entry date from position_metadata; fallback to 30-day approximation until backfilled
+// Actual entry date from position_metadata; then webhook payload (populated by build_ts_pm_payload.js
+// from position_metadata at detection time); then 30-day fallback as last resort.
 const exitDate    = webhook.exit_date || new Date().toISOString().split('T')[0];
 const actualEntryDate = posEntry.entry_date
   ? posEntry.entry_date.toString().substring(0, 10)
+  : webhook.entry_date
+  ? webhook.entry_date.toString().substring(0, 10)
   : new Date(new Date(exitDate).getTime() - 30 * 86400000).toISOString().split('T')[0];
 
 // Hold days from actual dates

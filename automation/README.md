@@ -18,20 +18,27 @@ Two scheduled jobs that watch the fund and help it get better over time, **witho
 3. **PR isolation.** All proposed changes (report + Type A fixes) live in a Pull Request from `audit/<date>` — never pushed to `main`, never auto-merged. The PR does nothing until *you* merge it (then apply any n8n code-node changes per the CLAUDE.md sync rules).
 4. **Structural ideas are never coded** — they're written up for you to build deliberately.
 
-## Files
+## File map
 
-| File | Purpose |
-|------|---------|
-| `canary.mjs` | Daily integrity check (Node, deterministic) |
-| `run_canary.sh` | Canary launcher (sources secrets, logs) |
-| `query.mjs` | Read-only SQL runner (`audit_ro`) — the audit's only DB path |
-| `weekly_audit_prompt.md` | The full audit instructions Claude follows |
-| `run_weekly_audit.sh` | Weekly launcher (headless `claude -p`, opus by default) |
-| `notify.sh` | Telegram sender (`notify.sh "msg"`) |
-| `empty-mcp.json` | Empty MCP config to disable all MCP in the audit |
-| `package.json` / `node_modules/` | Self-contained `@neondatabase/serverless` dep |
-| `logs/` | Run logs (gitignored): `canary.log`, `audit-<date>.log` |
-| `../audits/` | Weekly reports + `IMPROVEMENT_BACKLOG.md` (kept as record) |
+**Brains** — the files that actually do the work
+- `canary.mjs` — daily check
+- `weekly_audit_prompt.md` — Sunday audit instructions (Claude reads and follows this)
+
+**Helpers** — small tools the brains call
+- `query.mjs` — talks to the database (read-only)
+- `notify.sh` — sends Telegram messages
+- `empty-mcp.json` — safety lock (blocks DB writes during the audit)
+
+**Launchers** — how you start things
+- `.github/workflows/daily-canary.yml` — tells GitHub "run canary.mjs every weekday at 4:30 PM ET" ☁️
+- `.github/workflows/weekly-audit.yml` — tells GitHub "run the audit every Sunday midnight" ☁️
+- `run_canary.sh` — run canary manually from your Mac 💻
+- `run_weekly_audit.sh` — run audit manually from your Mac 💻
+
+**Plumbing** — ignore these
+- `package.json` / `node_modules/` — Node.js dependencies (`@neondatabase/serverless`)
+- `logs/` — local run history (gitignored)
+- `../audits/` — weekly reports + `IMPROVEMENT_BACKLOG.md`
 
 ## Secrets
 

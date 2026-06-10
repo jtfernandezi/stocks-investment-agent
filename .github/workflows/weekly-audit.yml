@@ -15,7 +15,7 @@ on:
     inputs:
       model:
         description: "Claude model (sonnet = reliable on subscription quota; opus = deeper but may hit session limits)"
-        default: "sonnet"
+        default: "opus"
         required: false
 
 permissions:

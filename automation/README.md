@@ -54,14 +54,14 @@ Two scheduled jobs that watch the fund and help it get better over time, **witho
 gh workflow list
 gh run list --workflow=daily-canary.yml --limit 5
 gh workflow run daily-canary.yml      # manual canary run (no Claude tokens)
-gh workflow run weekly-audit.yml -f model=sonnet   # manual audit run (uses tokens)
+gh workflow run weekly-audit.yml -f model=opus    # manual audit run (uses tokens)
 ```
 
 **Local launchd (optional fallback):** plists in `~/Library/LaunchAgents/` (`com.stocks.daily-canary` / `com.stocks.weekly-audit`). Removed once the cloud version is validated to avoid double-firing. Local on-demand runs:
 
 ```bash
 bash automation/run_canary.sh && tail -n 30 automation/logs/canary.log   # read-only, safe
-AUDIT_MODEL=sonnet bash automation/run_weekly_audit.sh                    # opens a PR via gh
+AUDIT_MODEL=opus bash automation/run_weekly_audit.sh                      # opens a PR via gh
 ```
 
 ## Reviewing a weekly audit

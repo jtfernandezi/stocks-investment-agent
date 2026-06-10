@@ -8,7 +8,7 @@ Two scheduled jobs that watch the fund and help it get better over time, **witho
 
 | Job | Schedule | What it does | Touches code? |
 |-----|----------|--------------|---------------|
-| **Daily canary** (`canary.mjs`) | Weekdays 16:07 UTC (~11 AM–12 PM ET) | Deterministic integrity check (no LLM). Catches the silent-failure class (cash deadlock, frozen watchlist, partial signals, swallowed query errors). Silent when healthy; **Telegram alarm only on failure.** | No |
+| **Daily canary** (`canary.mjs`) | Weekdays 21:30 UTC (4:30 PM ET — after market close) | Deterministic integrity check (no LLM). Catches the silent-failure class (cash deadlock, frozen watchlist, partial signals, swallowed query errors). Silent when healthy; **Telegram alarm only on failure.** | No |
 | **Weekly audit** (`weekly_audit_prompt.md`) | Sunday 06:11 UTC (00:11 Mexico City, overnight Sat→Sun) | Headless Claude Code does a full 7-lever audit, reads prior reports (longitudinal), writes `audits/<date>.md`, applies **Type A** fixes + logs **Type B** ideas, **opens a Pull Request**, and Telegrams a digest with the PR link. Runs overnight so it doesn't compete with your daytime token budget. | Proposes only (in a PR) |
 
 ## Safety model (why this can't break the fund)

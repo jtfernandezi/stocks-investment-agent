@@ -377,14 +377,27 @@ export default function PerformancePage() {
 
   // ── Monthly returns (computed from daily snapshots) ──────────────────────────
   const monthlyReturns = (() => {
-    const dated = snapshots.filter(s => s.rawDate);
+    const MON_ABBR = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const currentYear = new Date().getFullYear();
+    // Resolve a "YYYY-MM" key from each snapshot. Prefer rawDate; fall back to
+    // parsing the display string ("Jun 10") so the grid still works if a stale
+    // API response (pre-rawDate deploy) is served — assumes current year then.
+    const ymKey = (s: SnapPoint): string | null => {
+      if (s.rawDate) return s.rawDate.substring(0, 7);
+      if (s.date && s.date !== 'Start') {
+        const mi = MON_ABBR.indexOf(s.date.trim().slice(0, 3).toLowerCase());
+        if (mi >= 0) return `${currentYear}-${String(mi + 1).padStart(2, '0')}`;
+      }
+      return null;
+    };
+
+    const dated = snapshots.filter(s => ymKey(s) !== null);
     if (dated.length === 0) return [];
 
     // Group snapshots by "YYYY-MM", keep last snapshot per month as month-end value
     const byMonth: Record<string, number> = {};
     for (const s of dated) {
-      const ym = s.rawDate!.substring(0, 7); // "2026-05"
-      byMonth[ym] = s.portfolio; // later entries overwrite earlier ones (we want month-end)
+      byMonth[ymKey(s)!] = s.portfolio; // later entries overwrite earlier ones (we want month-end)
     }
 
     const months = Object.keys(byMonth).sort();
@@ -403,7 +416,6 @@ export default function PerformancePage() {
       yearMap[year][month] = ret;
     }
 
-    const currentYear = new Date().getFullYear();
     return Object.entries(yearMap)
       .sort(([a], [b]) => parseInt(a) - parseInt(b))
       .map(([yr, mons]) => {

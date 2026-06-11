@@ -376,9 +376,14 @@ export default function PerformancePage() {
   });
 
   // ── Monthly returns ──────────────────────────────────────────────────────────
+  const now = new Date();
+  const currentMonth = now.getMonth(); // 0-indexed
+  const currentYear  = now.getFullYear();
+  const monthsArr: (number | null)[] = Array(12).fill(null);
+  monthsArr[currentMonth] = parseFloat(totalReturnPct.toFixed(2));
   const monthlyReturns = [{
-    year: 2026, current: true,
-    months: [null, null, null, null, parseFloat(totalReturnPct.toFixed(2)), null, null, null, null, null, null, null],
+    year: currentYear, current: true,
+    months: monthsArr,
     annual: parseFloat(totalReturnPct.toFixed(2)),
   }];
 

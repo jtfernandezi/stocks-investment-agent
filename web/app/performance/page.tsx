@@ -12,7 +12,7 @@ import { NICHE_DISPLAY, ALL_NICHES, START_CAPITAL } from '@/lib/constants';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface SnapPoint  { date: string; portfolio: number; spy: number; }
+interface SnapPoint  { date: string; rawDate: string | null; portfolio: number; spy: number; }
 interface AccountData { equity: number; long_market_value: number; short_market_value: number; }
 interface OpenPos {
   ticker: string; side: string; pnl: number; pnlPct: number;
@@ -375,17 +375,47 @@ export default function PerformancePage() {
     };
   });
 
-  // ── Monthly returns ──────────────────────────────────────────────────────────
-  const now = new Date();
-  const currentMonth = now.getMonth(); // 0-indexed
-  const currentYear  = now.getFullYear();
-  const monthsArr: (number | null)[] = Array(12).fill(null);
-  monthsArr[currentMonth] = parseFloat(totalReturnPct.toFixed(2));
-  const monthlyReturns = [{
-    year: currentYear, current: true,
-    months: monthsArr,
-    annual: parseFloat(totalReturnPct.toFixed(2)),
-  }];
+  // ── Monthly returns (computed from daily snapshots) ──────────────────────────
+  const monthlyReturns = (() => {
+    const dated = snapshots.filter(s => s.rawDate);
+    if (dated.length === 0) return [];
+
+    // Group snapshots by "YYYY-MM", keep last snapshot per month as month-end value
+    const byMonth: Record<string, number> = {};
+    for (const s of dated) {
+      const ym = s.rawDate!.substring(0, 7); // "2026-05"
+      byMonth[ym] = s.portfolio; // later entries overwrite earlier ones (we want month-end)
+    }
+
+    const months = Object.keys(byMonth).sort();
+    const yearMap: Record<number, (number | null)[]> = {};
+
+    for (let i = 0; i < months.length; i++) {
+      const ym    = months[i];
+      const year  = parseInt(ym.substring(0, 4));
+      const month = parseInt(ym.substring(5, 7)) - 1; // 0-indexed
+      const endVal   = byMonth[ym];
+      // Start of this month = end of previous month, or START_CAPITAL if first month
+      const startVal = i > 0 ? byMonth[months[i - 1]] : START_CAPITAL;
+      const ret = parseFloat(((endVal / startVal - 1) * 100).toFixed(2));
+
+      if (!yearMap[year]) yearMap[year] = Array(12).fill(null);
+      yearMap[year][month] = ret;
+    }
+
+    const currentYear = new Date().getFullYear();
+    return Object.entries(yearMap)
+      .sort(([a], [b]) => parseInt(a) - parseInt(b))
+      .map(([yr, mons]) => {
+        const year = parseInt(yr);
+        const annual = mons.reduce<number | null>((acc, v) => {
+          if (v === null) return acc;
+          if (acc === null) return v;
+          return parseFloat((((1 + acc / 100) * (1 + v / 100) - 1) * 100).toFixed(2));
+        }, null);
+        return { year, current: year === currentYear, months: mons, annual: annual !== null ? parseFloat(annual.toFixed(2)) : null };
+      });
+  })();
 
   // ── Exposure (from open positions) ───────────────────────────────────────────
   const longUsd  = openPos.filter(p => p.side.toLowerCase() === 'long').reduce((a, p) => a + Math.abs(p.costBasis), 0);

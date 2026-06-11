@@ -325,7 +325,10 @@ The `stocks.watchlist` write (`Build Watchlist SQL` — DELETE + INSERT in one t
 
 ## Enhancements (2026-06-11) — Dashboard bug fixes
 
-- **Monthly Returns Grid — hardcoded month/year fixed** — `performance/page.tsx` was hardcoding the return value into index 4 (May) and the year as `2026`, so June (and all future months) always showed `—`. Fixed to derive `currentMonth` and `currentYear` dynamically from `new Date()` so the value always lands in the correct cell.
+- **Monthly Returns Grid — now computes true per-month returns** — `performance/page.tsx` previously hardcoded the cumulative return into index 4 (May) with the year as `2026`, so every other month showed `—`. Reworked to compute real per-month returns from the daily `portfolio_snapshots` already fetched via `/api/snapshots`: group snapshots by `YYYY-MM`, take the last (month-end) `portfolio_value_usd` per month, and compute each month's return as `(month-end / prior-month-end − 1)` with `START_CAPITAL` as the base for the first month. Annual = chain-linked product of the monthly returns. Year + current-year highlight derived from `new Date()`.
+  - **`/api/snapshots` — added `rawDate`** — the route returned only a display string (`"Jun 10"`); added an ISO `rawDate` (`YYYY-MM-DD`) field so the page can group by month.
+  - **Neon DATE gotcha (caused a `NaN` row)** — Neon's serverless driver returns a `DATE` column as a **JS `Date` object**, not an ISO string. `String(row.date)` therefore yields `"Wed May 20 2026 ..."`, so `substring(0,7)` became `"Wed May"` → `parseInt` → `NaN` for both year and month, rendering a `NaN` row with all-null cells. Fixed by building `rawDate` from `d.getUTCFullYear()/getUTCMonth()+1/getUTCDate()` (UTC parts, consistent with the display date's `timeZone:'UTC'`). **General rule: never `String()` a Neon DATE/timestamp column expecting ISO — format it explicitly.**
+  - **Resilient fallback** — the page's `ymKey` only trusts `rawDate` when it matches `/^\d{4}-\d{2}/`; otherwise it parses the display string (`"Jun 10"`, assuming current year). So a stale/cached snapshots response (pre-`rawDate` deploy) or a malformed `rawDate` can never blank the grid or produce a `NaN` row.
 
 ## Known Open Issues
 

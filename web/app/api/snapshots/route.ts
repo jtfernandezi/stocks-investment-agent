@@ -26,9 +26,12 @@ export async function GET() {
         const spyCumPct = parseFloat(String(row.spy_cumulative_pct));
         const spy = isNaN(spyCumPct) ? START_CAPITAL : START_CAPITAL * (1 + spyCumPct / 100);
         const d   = new Date(String(row.date));
+        // Neon returns the DATE column as a JS Date, so String(row.date) is a
+        // full "Wed May 20 2026 ..." string, not ISO. Format from the UTC parts.
+        const rawDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
         return {
           date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
-          rawDate: String(row.date),  // ISO yyyy-mm-dd for monthly return computation
+          rawDate,  // ISO yyyy-mm-dd for monthly return computation
           portfolio,
           spy,
         };

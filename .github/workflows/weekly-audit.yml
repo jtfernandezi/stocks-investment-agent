@@ -21,6 +21,7 @@ on:
 permissions:
   contents: write          # push the audit/<date> branch
   pull-requests: write     # open the PR
+  actions: read            # read workflow run history (canary health check)
 
 concurrency:
   group: weekly-audit

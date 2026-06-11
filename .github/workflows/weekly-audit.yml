@@ -8,9 +8,9 @@ name: Weekly Audit
 
 on:
   schedule:
-    # 09:00 UTC Thursday = 03:00 America/Mexico_City (UTC-6, no DST) — opus cap test run
-    # to verify opus completes without hitting the session cap. Revert to Sunday after.
-    - cron: "0 9 * * 4"
+    # 06:11 UTC Sunday = 00:11 America/Mexico_City (UTC-6, no DST) — overnight
+    # Sat->Sun, so the PR + digest are waiting when you wake Sunday.
+    - cron: "11 6 * * 0"
   workflow_dispatch:
     inputs:
       model:

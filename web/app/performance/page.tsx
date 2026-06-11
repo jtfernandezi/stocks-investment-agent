@@ -383,7 +383,9 @@ export default function PerformancePage() {
     // parsing the display string ("Jun 10") so the grid still works if a stale
     // API response (pre-rawDate deploy) is served — assumes current year then.
     const ymKey = (s: SnapPoint): string | null => {
-      if (s.rawDate) return s.rawDate.substring(0, 7);
+      // Only trust rawDate if it's actually ISO "YYYY-MM..."; otherwise fall back
+      // to the display string so a malformed rawDate can't produce a NaN row.
+      if (s.rawDate && /^\d{4}-\d{2}/.test(s.rawDate)) return s.rawDate.substring(0, 7);
       if (s.date && s.date !== 'Start') {
         const mi = MON_ABBR.indexOf(s.date.trim().slice(0, 3).toLowerCase());
         if (mi >= 0) return `${currentYear}-${String(mi + 1).padStart(2, '0')}`;

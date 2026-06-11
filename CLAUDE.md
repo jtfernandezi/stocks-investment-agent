@@ -323,6 +323,10 @@ All 10 `Specialist [Niche]` nodes moved from native OpenAI (GPT-4o) to **HTTP Re
 
 The `stocks.watchlist` write (`Build Watchlist SQL` — DELETE + INSERT in one transaction) had been silently failing **every session since 2026-06-03**, freezing the watchlist on stale `2026-06-03_close` data. Root cause: the 2026-06-03 schema change switched the orchestrator's watchlist `direction` output from `long`/`short` to `BULLISH`/`BEARISH` (to match DB + UI), but the DB CHECK constraint was never updated — it still read `CHECK (direction IN ('long','short'))`. The INSERT threw on every `BULLISH`/`BEARISH` row; because DELETE + INSERT share a transaction, the failure rolled back the DELETE too, so the old rows survived untouched and no new ones ever landed. The whole pipeline already spoke `BULLISH`/`BEARISH` (orchestrator prompt in `06`, passthrough in `09_process_post_trade.js`, Build Watchlist SQL, `/api/watchlist/route.ts`, `research/page.tsx` styling + ↑/↓ icons) — the constraint was the single lagging piece. Fix (DB-only, no code/n8n change): `ALTER TABLE stocks.watchlist DROP CONSTRAINT watchlist_direction_check; ADD ... CHECK (direction IN ('BULLISH','BEARISH'));`. Stale `2026-06-03_close` rows deleted; next close session repopulates cleanly.
 
+## Enhancements (2026-06-11) — Dashboard bug fixes
+
+- **Monthly Returns Grid — hardcoded month/year fixed** — `performance/page.tsx` was hardcoding the return value into index 4 (May) and the year as `2026`, so June (and all future months) always showed `—`. Fixed to derive `currentMonth` and `currentYear` dynamically from `new Date()` so the value always lands in the correct cell.
+
 ## Known Open Issues
 
 None blocking. First 10-niche session is 2026-06-06 9:30 AM (healthcare/financials fundamentals populate at the 8:30 AM refresh; until then those tickers show "No data" — graceful, the specialist falls back to price/technicals/news).

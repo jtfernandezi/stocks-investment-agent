@@ -9,7 +9,7 @@ Two scheduled jobs that watch the fund and help it get better over time, **witho
 | Job | Schedule | What it does | Touches code? |
 |-----|----------|--------------|---------------|
 | **Daily canary** (`canary.mjs`) | Weekdays 21:30 UTC (4:30 PM ET — after market close) | Deterministic integrity check (no LLM). Catches the silent-failure class (cash deadlock, frozen watchlist, partial signals, swallowed query errors). Silent when healthy; **Telegram alarm only on failure.** | No |
-| **Weekly audit** (`weekly_audit_prompt.md`) | Sunday 06:11 UTC (00:11 Mexico City, overnight Sat→Sun) | Headless Claude Code does a full 7-lever audit, reads prior reports + the Initiatives Register (longitudinal), writes `audits/<date>.md`, and **codes its proposals into Pull Requests** — one PR per change, tiered `[A]` (tunable fix) / `[B-code]` (isolated code-only change) / `[B-spec]` (n8n-wiring or strategy → spec only). Lever 7 also runs a **generative R&D** pass that advances a maturity-graded research agenda. Telegrams a digest linking every PR. Runs overnight so it doesn't compete with your daytime token budget. | Codes into PRs — **never merges, never deploys** |
+| **Weekly audit** (`weekly_audit_prompt.md`) | Sunday 07:00 UTC (01:00 Mexico City, overnight Sat→Sun) | Headless Claude Code does a full 7-lever audit, reads prior reports + the Initiatives Register (longitudinal), writes `audits/<date>.md`, and **codes its proposals into Pull Requests** — one PR per change, tiered `[A]` (tunable fix) / `[B-code]` (isolated code-only change) / `[B-spec]` (n8n-wiring or strategy → spec only). Lever 7 also runs a **generative R&D** pass that advances a maturity-graded research agenda. Telegrams a digest linking every PR. Runs overnight so it doesn't compete with your daytime token budget. | Codes into PRs — **never merges, never deploys** |
 
 ## Safety model (why this can't break the fund)
 
@@ -33,7 +33,7 @@ The inviolable rule is **never auto-merged / never deployed** — *not* "never c
 
 **Launchers** — how you start things
 - `.github/workflows/daily-canary.yml` — tells GitHub "run canary.mjs every weekday at 4:30 PM ET" ☁️
-- `.github/workflows/weekly-audit.yml` — tells GitHub "run the audit every Sunday midnight" ☁️
+- `.github/workflows/weekly-audit.yml` — tells GitHub "run the audit every Sunday 01:00 Mexico City" ☁️
 - `run_canary.sh` — run canary manually from your Mac 💻
 - `run_weekly_audit.sh` — run audit manually from your Mac 💻
 

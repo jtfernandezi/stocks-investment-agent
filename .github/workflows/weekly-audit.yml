@@ -8,9 +8,9 @@ name: Weekly Audit
 
 on:
   schedule:
-    # 06:11 UTC Sunday = 00:11 America/Mexico_City (UTC-6, no DST) — overnight
+    # 07:00 UTC Sunday = 01:00 America/Mexico_City (UTC-6, no DST) — overnight
     # Sat->Sun, so the PR + digest are waiting when you wake Sunday.
-    - cron: "11 6 * * 0"
+    - cron: "0 7 * * 0"
   workflow_dispatch:
     inputs:
       model:

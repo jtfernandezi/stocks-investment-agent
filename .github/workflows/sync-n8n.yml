@@ -1,0 +1,67 @@
+name: Sync n8n
+
+# Auto-deploy: when a merge to main changes a workflows/code/*.js file, push that
+# file into its live n8n Code node. This is "Stage 1" — merge becomes deploy for
+# CODE-NODE EDITS ONLY (the only thing [A]/[B-code] audit PRs ever produce).
+#
+# It can NEVER add or rewire an n8n node (that stays manual = [B-spec]). The drift
+# guard refuses to overwrite a node that was hand-edited in n8n (matches neither the
+# pre-merge nor the merged version) — it skips + Telegrams instead of clobbering.
+# build_specialist_message.js (8-instance template) is excluded by the manifest.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "workflows/code/**.js"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Actually push (true) or dry-run (false)"
+        default: "true"
+        required: false
+
+concurrency:
+  group: sync-n8n
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # need git history for the drift-guard baseline (git show <before>:file)
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+
+      - name: Push changed code nodes to live n8n
+        env:
+          N8N_API_KEY: ${{ secrets.N8N_API_KEY }}
+          N8N_API_BASE: ${{ secrets.N8N_API_BASE }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          APPLY_FLAG="--apply"
+          if [ "${{ github.event.inputs.apply }}" = "false" ]; then APPLY_FLAG=""; fi
+          # On push: limit scope to files changed in this merge + run the drift guard
+          # against the pre-merge SHA. On manual dispatch: full sync, no baseline.
+          if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            node automation/sync_n8n.mjs --changed-since "$BEFORE_SHA" $APPLY_FLAG --notify
+          else
+            node automation/sync_n8n.mjs $APPLY_FLAG --notify
+          fi
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=🚨 n8n sync FAILED on $(date -u +%F). A merged code change may NOT be live. Check GitHub Actions + run automation/sync_n8n.mjs manually." >/dev/null

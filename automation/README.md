@@ -10,6 +10,7 @@ Two scheduled jobs that watch the fund and help it get better over time, **witho
 |-----|----------|--------------|---------------|
 | **Daily canary** (`canary.mjs`) | Weekdays 21:30 UTC (4:30 PM ET — after market close) | Deterministic integrity check (no LLM). Catches the silent-failure class (cash deadlock, frozen watchlist, partial signals, swallowed query errors). Silent when healthy; **Telegram alarm only on failure.** | No |
 | **Weekly audit** (`weekly_audit_prompt.md`) | Sunday 07:00 UTC (01:00 Mexico City, overnight Sat→Sun) | Headless Claude Code does a full 7-lever audit, reads prior reports + the Initiatives Register (longitudinal), writes `audits/<date>.md`, and **codes its proposals into Pull Requests** — one PR per change, tiered `[A]` (tunable fix) / `[B-code]` (isolated code-only change) / `[B-spec]` (n8n-wiring or strategy → spec only). Lever 7 also runs a **generative R&D** pass that advances a maturity-graded research agenda. Telegrams a digest linking every PR. Runs overnight so it doesn't compete with your daytime token budget. | Codes into PRs — **never merges, never deploys** |
+| **Sync n8n** (`sync_n8n.mjs`) | On merge to `main` touching `workflows/code/**.js` | Pushes each changed code file into its live n8n Code node so **merge == deploy** for code-node edits (the only thing `[A]`/`[B-code]` PRs produce). Fresh-downloads, diffs, PUTs only changes; a **drift guard** refuses to overwrite a node hand-edited in n8n (skips + Telegrams instead). Can NEVER add/rewire a node. Telegrams what synced. | Replaces existing node `jsCode` only — **never adds/rewires nodes, never merges** |
 
 ## Safety model (why this can't break the fund)
 
@@ -25,17 +26,21 @@ The inviolable rule is **never auto-merged / never deployed** — *not* "never c
 **Brains** — the files that actually do the work
 - `canary.mjs` — daily check
 - `weekly_audit_prompt.md` — Sunday audit instructions (Claude reads and follows this)
+- `sync_n8n.mjs` — pushes merged `workflows/code/*.js` into the live n8n nodes (dry-run by default)
 
 **Helpers** — small tools the brains call
 - `query.mjs` — talks to the database (read-only)
 - `notify.sh` — sends Telegram messages
 - `empty-mcp.json` — safety lock (blocks DB writes during the audit)
+- `n8n_manifest.json` — the file→node map sync_n8n.mjs reads (20 nodes; `manualOnly` = never auto-synced)
 
 **Launchers** — how you start things
 - `.github/workflows/daily-canary.yml` — tells GitHub "run canary.mjs every weekday at 4:30 PM ET" ☁️
 - `.github/workflows/weekly-audit.yml` — tells GitHub "run the audit every Sunday 01:00 Mexico City" ☁️
+- `.github/workflows/sync-n8n.yml` — tells GitHub "push code-node changes to live n8n on every merge to main" ☁️
 - `run_canary.sh` — run canary manually from your Mac 💻
 - `run_weekly_audit.sh` — run audit manually from your Mac 💻
+- `node sync_n8n.mjs [--apply]` — push code-node changes to n8n manually from your Mac 💻
 
 **Plumbing** — ignore these
 - `package.json` / `node_modules/` — Node.js dependencies (`@neondatabase/serverless`)

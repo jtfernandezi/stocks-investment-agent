@@ -428,7 +428,16 @@ return [{
     // Feedback system
     specialistEffectiveConf,
     patternPerfMap,
-    recentTradeLessons: lessonRows.slice(0, 5),
+    // Exclude phantom "never_executed" rows (orchestrator-proposed BUY/SHORTs that
+    // 08 blocked at execution but Process Post-Trade still wrote to `trades`) and any
+    // outcome-null rows. They are NOT real trades; counting them as non-wins corrupts
+    // the win-rate / by-niche / by-pattern feed the orchestrator relies on (see audit
+    // 2026-06-12: SMR/SNPS phantoms sat in the last-5 window via recent updated_at and
+    // fed a fake "nuclear 0/1" + "semiconductors 0%" that the orchestrator cited to
+    // decline new entries). Root-cause wiring fix is tracked separately (Backlog #1).
+    recentTradeLessons: lessonRows
+      .filter(l => l.exit_reason !== 'never_executed' && l.outcome != null)
+      .slice(0, 5),
     watchlist: watchlistRows,
     earningsRows,
 

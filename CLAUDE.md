@@ -57,7 +57,7 @@ Secrets: 9 GitHub repo secrets + `~/.config/stocks-audit/secrets.env` (local, ch
 | `workflows/code/watchdog_build_news_prompt.js` | Watchdog | Build News Prompt |
 | `workflows/code/watchdog_parse_flip.js` | Watchdog | Parse Flip Response |
 | `workflows/code/post_mortem_build_input.js` | Post-Mortem | Build Post-Mortem Input |
-| `workflows/code/post_mortem_store.js` | Post-Mortem | Parse & Store Post-Mortem |
+| `workflows/code/post_mortem_store.js` | Post-Mortem | Parse Post-Mortem Output |
 | `workflows/code/letter_build_prompt.js` | Main v2 | Build Letter Prompt (close sessions only) |
 | `workflows/code/letter_store.js` | Main v2 | Parse & Store Letter |
 | `workflows/code/compute_correlation_matrix.js` | Main v2 | Compute Correlation Matrix |
@@ -73,20 +73,32 @@ Prompts in `/prompts/` are the spec/reference versions. The prompts that actuall
 
 **The local `workflows/code/` files are source control. n8n is production. Editing a file is incomplete until the change is live in n8n.**
 
-After editing any file in `workflows/code/`, you MUST push the change to n8n via the API before the task is done:
+**This is now automated (Stage 1, 2026-06-12).** Pushing a `workflows/code/*.js` change to `main` triggers the **Sync n8n** GitHub Action (`.github/workflows/sync-n8n.yml` → `automation/sync_n8n.mjs`), which pushes the changed file into its live node. So for the 20 files mapped in `automation/n8n_manifest.json`, **merge == deploy** — no manual step. The script:
+- **Fresh-downloads** each workflow (never a cached copy), compares the live node's `jsCode` to the file (ignoring trailing-newline noise), and PUTs only the diffs.
+- Runs a **drift guard**: before overwriting, it confirms the live node matches what git held *before* the merge (`git show <before-sha>:file`). If live matches neither the old nor new version, the node was hand-edited in n8n → it **skips + Telegrams**, never clobbers.
+- Only ever replaces an existing node's `jsCode`. It can NEVER add/rewire a node (that stays manual = `[B-spec]`).
 
-1. Download the full workflow JSON (`GET /api/v1/workflows/{id}`)
-2. Replace the relevant node's `parameters.jsCode` with the updated file content
-3. PUT the workflow back using only `{name, nodes, connections, settings.executionOrder, staticData}` — omit all other top-level fields or n8n will reject with "must NOT have additional properties"
-4. Confirm the response contains `updatedAt`
+Run it manually any time (dry-run by default):
+```bash
+node automation/sync_n8n.mjs            # show what WOULD change
+node automation/sync_n8n.mjs --apply    # push the diffs
+node automation/sync_n8n.mjs --file 02_compute_derived_metrics.js --apply
+```
+
+**Still manual (NOT auto-synced):**
+- `build_specialist_message.js` — template feeding 8 `Build [Niche] Message` nodes with per-niche constants (in the manifest's `manualOnly` list; the action warns if it changes).
+- Any new node, node rewiring, or non-code-node change (inline SQL nodes, HTTP nodes, etc.).
+
+If you must sync by hand, the underlying API steps are: GET `/workflows/{id}` → replace the node's `parameters.jsCode` → PUT back using only `{name, nodes, connections, settings.executionOrder, staticData}` (omit other top-level fields or n8n rejects with "must NOT have additional properties") → confirm `updatedAt` in the response.
 
 n8n API: `https://<N8N_HOST>/api/v1`  
 Header: `X-N8N-API-KEY: <key from memory reference_n8n.md>`
 
-Workflow IDs:
+Workflow IDs (also in `automation/n8n_manifest.json`):
 - Main Analysis v2: `l2d06hEvDlfLibms` (contains all 10 specialist Build nodes + Build Orchestrator Input)
 - Post-Mortem: `BtVZfEGwbsDpOczg` (contains Build Post-Mortem Input)
 - Watchdog: `7n1bPJ91OkMx3KM4`
+- Fundamentals Refresh: `8hHaG6U0ToaHRAei`
 
 ## Critical: n8n Node Naming (Main Analysis v2)
 
@@ -340,6 +352,16 @@ The weekly audit shifted from "diagnose + propose" to "diagnose + **implement**,
 - **Lever 7 split into 7a (evidence-driven fixes) + 7b (generative R&D, REQUIRED every week)** — 7b advances a maturity-graded **Initiatives Register** (`IMPROVEMENT_BACKLOG.md`) across a fixed taxonomy (new alpha strategies · free-tier signals · risk/guardrail upgrades · meta-infra), grading each `speculative`/`promising`/`evidence-backed`. Grades advance cumulatively week-over-week (don't re-brainstorm); honest grading ("still speculative") is the anti-nagging safety valve. An initiative reaching `evidence-backed` AND isolated/code-only may be promoted to a `[B-code]` PR.
 - **Strategy stays uncoded until verifiable.** New trading strategies (PEAD, sector rotation) remain `[B-spec]` until a **backtest harness** exists — the harness is the keystone that lets strategy be verified before it's coded. Building it is the top meta-infra initiative.
 - **Report template** gains `## R&D Initiatives` + `## Changes shipped this week (as PRs)` + `## Spec-only proposals`; digest lists every PR URL + an R&D pipeline line. Operating envelope (§0.5) unchanged and still binds the coded tiers — `⛔` ideas are never coded.
+
+## Enhancements (2026-06-12) — Automated n8n sync (Stage 1)
+
+Closed the last manual gap in the audit loop: merging a code-node PR no longer requires a hand sync to n8n. New automation:
+- **`automation/sync_n8n.mjs`** — pushes `workflows/code/*.js` files into their live n8n Code nodes. Dry-run by default; `--apply` to push; `--file <name>` to target one; `--changed-since <sha>` to scope to a merge + enable the drift guard. Fresh-downloads every workflow, compares ignoring trailing-newline noise, PUTs only diffs (grouped/atomic per workflow), confirms `updatedAt`.
+- **`automation/n8n_manifest.json`** — the file→node map (20 nodes across the 4 workflows), verified against live n8n. `manualOnly` lists `build_specialist_message.js` (8-instance template — never auto-synced).
+- **`.github/workflows/sync-n8n.yml`** — on push to `main` touching `workflows/code/**`, runs the script with `--apply --notify`, scoped to the merge's changed files. **Merge == deploy** for code-node edits. Telegrams a digest of what synced.
+- **Drift guard** — before overwriting a node, confirms the live code matches what git held *before* the merge. If it matches neither old nor new (hand-edited in n8n), it **skips + alerts**, never clobbers. Worst case is a Telegram + an un-synced node, never a silent overwrite of a manual change.
+- **Scope is bounded by construction**: only ever replaces an existing node's `jsCode`. New nodes / rewiring / inline-SQL nodes stay manual (`[B-spec]`). The "never auto-merged" half of the audit safety rule is unchanged (a human still merges every PR); this only automates the *deploy-after-merge* step.
+- **Two corrections found while building:** (1) the Code Node Files table had `post_mortem_store.js`'s node name wrong — it's **`Parse Post-Mortem Output`**, now fixed. (2) A 2026-06-02 forgotten sync left git ahead of live on two files — `parse_save_all_signals.js` (cosmetic reorder, no impact — DB columns already populated) and `watchdog_parse_flip.js` (functional `watchdog_confidence`/`flip_triggered` capture, but dormant — `watchdog_events` has 0 rows ever). Reconciled to a clean `live == git` baseline as the tool's first run.
 
 ## Known Open Issues
 

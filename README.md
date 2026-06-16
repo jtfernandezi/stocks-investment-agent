@@ -83,6 +83,7 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 - **Penalties (stack multiplicatively):** correlation >0.70 with open position, earnings ≤2 days, NOISE signal history, FIRST_SIGNAL — each reduces sizing one tier
 - **Thesis stop:** mandatory immediate exit when specialist flips direction
 - **Earnings exit:** default close before earnings ≤2 days unless exceptional conditions met
+- **Give-back protection:** each open position's peak unrealized gain since entry (and how much has been given back) is computed every session and shown to the orchestrator. A position that has given back ≥50% of a ≥5% peak gain with no fresh momentum is treated as an independent profit-taking signal — it doesn't have to wait for thesis breakage or the (wide, 8–20%) trailing stop to trigger.
 
 ## Database Schema (Neon — `stocks` schema)
 

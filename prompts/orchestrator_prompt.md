@@ -257,8 +257,12 @@ For SHORT positions, apply this rule with the correct inversion:
 - "No TREND signal" on a SHORT means no sustained TREND BEARISH pattern — the sector has not confirmed 4+/5 BEARISH sessions to support the thesis.
 - A SHORT with positive P&L (stock declining as expected, thesis playing out) is NOT subject to this aging rule regardless of days held — do not close a winning short just because it is old.
 
-### Profit-taking (discretionary)
-If a position has gained >20%: consider trimming half and holding the rest with a tighter trailing stop. A 25% gain reversing to 5% is worth protecting — consider trimming.
+### Profit-taking and give-back protection
+Each open position's listing in section 2 shows "Peak gain" (its best unrealized gain since entry, derived from intraday highs/lows) and "Given back" (how much of that peak has been lost, in percentage points and as a % of the peak). The trailing stop only reacts to price — it has no memory of how much profit a position once had, and the stop band (8-20%) is often wider than a typical give-back. A position can run from +8% to -3% without ever testing its stop. Treat significant give-back as its own sell signal, independent of thesis status and stop proximity:
+- Peak gain ≥5% AND give-back ≥50% of that peak (flagged "← SIGNIFICANT GIVE-BACK" in the position data) AND no fresh TREND/REVERSAL confirmation this session → strong candidate to close now and bank what remains, rather than waiting for the thesis to fully break or the stop to be hit. Use exit_reason: "profit_taking".
+- If the position is still meaningfully profitable (current P&L comfortably positive) and give-back is moderate (<50% of peak), trimming half and holding the rest is the more conservative response — do not force a full exit on a position that is still working.
+- If a position's peak gain reached >20% at any point, always weigh trimming half and tightening the stop on the remainder, regardless of current give-back level.
+- Do not apply this rule to positions with no "Peak gain" shown — they have never been meaningfully profitable since entry and are governed by the standard thesis/stop/aging rules instead.
 
 ## YOUR DECISION PROCESS
 
@@ -270,7 +274,7 @@ For every open position:
 3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Strong case to exit.
 4. Earnings ≤2 days? → Evaluate earnings risk — lean toward closing.
 5. Stop proximity 🔴 (<3%) with weakening thesis? → Consider closing proactively.
-6. Position gained >20%? → Consider trimming.
+6. Significant give-back from peak gain (see "Peak gain" / "Given back" in position data)? → Apply profit-taking and give-back protection, independent of thesis status.
 7. Held >30 days with negative P&L and no TREND confirmation? → Apply position aging rule.
 
 **Assessing thesis_intact for SHORT positions — the direction inverts:**

@@ -146,11 +146,26 @@ const postMortemPayloads = closedPositions.map(action => {
   };
 });
 
-// ── DERIVE MARKET OPEN FROM SESSION TYPE (not LLM judgment) ──────────────────
-// The LLM doesn't reliably know what morning/midday/close map to in ET.
-// Market is open for morning (9:30 AM ET) and midday (12:00 PM ET) sessions.
-// Close (3:50 PM ET) is after regular hours — no new orders.
-const isMarketOpen = orchInput.session_type === 'morning' || orchInput.session_type === 'midday';
+// ── DERIVE MARKET OPEN FROM REAL MARKET STATUS (not LLM judgment) ────────────
+// The LLM self-reports is_market_open with no real data to ground it in, and
+// has been seen hallucinating false on the close session — apparently reading
+// session_type: "close" as "market is closed" rather than "this is the 3:50 PM
+// pre-close session" (market is open until 4:00 PM ET). A prior version of this
+// fix made the same mistake in code: it hardcoded close-session = market closed,
+// silently wiping every close-session trade action (e.g. a 2026-06-16 DDOG SELL
+// that the orchestrator correctly decided on but never executed) regardless of
+// actual hours. Ground truth instead: by construction, this node only runs when
+// the market is already confirmed open — the scheduled trigger gates on
+// `Is Market Open? (Start)` before reaching here, and the watchdog trigger
+// enters at `Set Session`, skipping `Fetch Market Status` entirely, only after
+// the watchdog has already verified market hours itself.
+let isMarketOpen = true;
+try {
+  isMarketOpen = $("Fetch Market Status").first().json.isOpen === true;
+} catch (_) {
+  // Watchdog-triggered run — Fetch Market Status didn't execute this run because
+  // the watchdog already verified market hours before triggering this workflow.
+}
 
 // ── DERIVE ORCHESTRATOR SESSION TYPE FOR STORAGE ─────────────────────────────
 // session_id carries '_watchdog' suffix for watchdog-triggered runs.

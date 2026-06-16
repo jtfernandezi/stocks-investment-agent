@@ -1,0 +1,35 @@
+{
+  "_comment": "Maps each workflows/code/*.js file to the live n8n Code node that runs it. Used by sync_n8n.mjs to push merged code into n8n. ONE file == ONE node here. Files NOT listed (see manualOnly) must be synced by hand. Verified against live n8n 2026-06-12.",
+  "apiBaseDefault": "https://<N8N_HOST>/api/v1",
+  "workflows": {
+    "main": "l2d06hEvDlfLibms",
+    "watchdog": "7n1bPJ91OkMx3KM4",
+    "postmortem": "BtVZfEGwbsDpOczg",
+    "fundamentals": "8hHaG6U0ToaHRAei"
+  },
+  "nodes": [
+    { "file": "01_set_session.js",              "workflow": "main",         "node": "Set Session" },
+    { "file": "02_compute_derived_metrics.js",  "workflow": "main",         "node": "Compute Derived Metrics" },
+    { "file": "parse_save_all_signals.js",      "workflow": "main",         "node": "Parse & Save All Signals" },
+    { "file": "06_build_orchestrator_input.js", "workflow": "main",         "node": "Build Orchestrator Input" },
+    { "file": "07_parse_orchestrator_output.js","workflow": "main",         "node": "Parse Orchestrator Output" },
+    { "file": "08_prepare_trade_actions.js",    "workflow": "main",         "node": "Prepare Trade Actions" },
+    { "file": "09_process_post_trade.js",       "workflow": "main",         "node": "Process Post-Trade" },
+    { "file": "letter_build_prompt.js",         "workflow": "main",         "node": "Build Letter Prompt" },
+    { "file": "letter_store.js",                "workflow": "main",         "node": "Parse & Store Letter" },
+    { "file": "compute_correlation_matrix.js",  "workflow": "main",         "node": "Compute Correlation Matrix" },
+    { "file": "build_session_email.js",         "workflow": "main",         "node": "Build Session Email" },
+    { "file": "watchdog_has_open_positions.js", "workflow": "watchdog",     "node": "Has Open Positions?" },
+    { "file": "watchdog_build_news_prompt.js",  "workflow": "watchdog",     "node": "Build News Prompt" },
+    { "file": "watchdog_parse_flip.js",         "workflow": "watchdog",     "node": "Parse Flip Response" },
+    { "file": "detect_trailing_stop_exits.js",  "workflow": "watchdog",     "node": "Find TS Exits" },
+    { "file": "build_ts_pm_payload.js",         "workflow": "watchdog",     "node": "Build TS PM Payload" },
+    { "file": "post_mortem_build_input.js",     "workflow": "postmortem",   "node": "Build Post-Mortem Input" },
+    { "file": "post_mortem_store.js",           "workflow": "postmortem",   "node": "Parse Post-Mortem Output" },
+    { "file": "fundamentals_parse.js",          "workflow": "fundamentals", "node": "Parse Fundamentals" },
+    { "file": "fundamentals_parse_earnings.js", "workflow": "fundamentals", "node": "Parse Earnings" }
+  ],
+  "manualOnly": [
+    { "file": "build_specialist_message.js", "reason": "Template feeding 8 'Build [Niche] Message' nodes, each with 3 differing constants (NICHE/NICHE_DISPLAY/TICKERS). Auto-sync would scramble the per-niche constants. Sync by hand." }
+  ]
+}

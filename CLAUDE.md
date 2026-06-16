@@ -341,6 +341,16 @@ The weekly audit shifted from "diagnose + propose" to "diagnose + **implement**,
 - **Strategy stays uncoded until verifiable.** New trading strategies (PEAD, sector rotation) remain `[B-spec]` until a **backtest harness** exists — the harness is the keystone that lets strategy be verified before it's coded. Building it is the top meta-infra initiative.
 - **Report template** gains `## R&D Initiatives` + `## Changes shipped this week (as PRs)` + `## Spec-only proposals`; digest lists every PR URL + an R&D pipeline line. Operating envelope (§0.5) unchanged and still binds the coded tiers — `⛔` ideas are never coded.
 
+## Enhancements (2026-06-16) — Profit-decay / give-back protection
+
+Diagnosed from the trade log: positions were consistently entering profit early, then giving the gain back and exiting via the mechanical trailing stop (ATR×3, 8–20%) at a small loss rather than being closed by the orchestrator while still ahead. The trailing stop only reacts to price and has no memory of how much profit a position once had — a position can run from +8% to -3% without ever testing an 8–20% band. Fix is data + prompt only, no new order management, no schema change:
+
+- **`02_compute_derived_metrics.js`** — new `profitDecayMap`, computed fresh every session (not persisted anywhere). For each open position with a `position_metadata.entry_date`, finds the peak favorable price since entry from the already-fetched bar history (max high for longs / min low for shorts), derives `peak_unrealized_pct`, and compares it to the current `unrealized_plpc` to get `decay_from_peak_pct` and `pct_of_peak_given_back`. Positions that never showed a profit, or have no entry-date metadata (legacy positions), are skipped — they fall back to the standard thesis/stop/aging rules.
+- **`06_build_orchestrator_input.js`** — `formatPositions()` now prints "Peak gain / Given back" inline per open position (flagging `← SIGNIFICANT GIVE-BACK` at ≥50% of peak given back). The old blunt "`>20%` gain → consider trimming" rule is replaced with explicit give-back guidance: peak gain ≥5% + give-back ≥50% of peak + no fresh TREND/REVERSAL confirmation → strong candidate to close now via `exit_reason: "profit_taking"` (existing enum value, no schema change), independent of thesis status or stop proximity. Decision-process Step 1 item 6 updated to reference give-back instead of the raw `>20%` threshold.
+- **`prompts/orchestrator_prompt.md`** kept in sync with the same wording.
+- Synced to live n8n (Main Analysis v2, `l2d06hEvDlfLibms`) the same session — takes effect on the next scheduled or watchdog-triggered run.
+- Deliberately the cheaper, judgment-based half of a two-part idea discussed with the operator. The mechanical alternative (Watchdog cancels and resubmits a tighter/breakeven trailing stop once a position crosses a profit threshold) was scoped but not built — revisit if positions keep round-tripping after a few weeks of this softer fix.
+
 ## Known Open Issues
 
 None blocking. First 10-niche session is 2026-06-06 9:30 AM (healthcare/financials fundamentals populate at the 8:30 AM refresh; until then those tickers show "No data" — graceful, the specialist falls back to price/technicals/news).

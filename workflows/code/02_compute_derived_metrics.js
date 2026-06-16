@@ -172,6 +172,52 @@ const enrichedPositions = positions.map(pos => {
   return { ...pos, days_held, entry_niche: meta?.niche || null, entry_thesis: meta?.thesis || null };
 });
 
+// ── PROFIT DECAY TRACKING (peak unrealized gain vs current) ──────────────────
+// A trailing stop only reacts to price action — it has no memory of how much
+// profit a position once had. A trade can run from +8% to -3% without ever
+// testing the stop, because the stop band (8-20%) is wider than the give-back.
+// This computes each position's Maximum Favorable Excursion (peak high/low
+// since entry) so the orchestrator can treat give-back as its own sell signal,
+// independent of thesis breakage or stop proximity.
+const profitDecayMap = {};
+for (const pos of positions) {
+  const ticker      = pos.symbol;
+  const meta        = posMetadataMap[ticker];
+  const entryDate   = meta && meta.entry_date;
+  if (!entryDate) continue;  // no metadata — can't anchor the "since entry" window
+
+  const bars = allBars[ticker];
+  if (!Array.isArray(bars) || bars.length === 0) continue;
+
+  const side          = parseFloat(pos.qty) > 0 ? 'long' : 'short';
+  const entryPrice    = parseFloat(pos.avg_entry_price);
+  const currentUnrealizedPct = parseFloat(pos.unrealized_plpc) * 100;
+
+  const entryMs    = new Date(entryDate).getTime();
+  const sinceEntry = bars.filter(b => new Date(b.t).getTime() >= entryMs);
+  if (sinceEntry.length === 0) continue;
+
+  const peakPrice = side === 'long'
+    ? Math.max(...sinceEntry.map(b => b.h))
+    : Math.min(...sinceEntry.map(b => b.l));
+
+  const peakUnrealizedPct = side === 'long'
+    ? (peakPrice - entryPrice) / entryPrice * 100
+    : (entryPrice - peakPrice) / entryPrice * 100;
+
+  if (peakUnrealizedPct <= 0) continue;  // never showed a profit — nothing to give back
+
+  const decayFromPeakPct    = Math.max(0, peakUnrealizedPct - currentUnrealizedPct);
+  const pctOfPeakGivenBack  = (decayFromPeakPct / peakUnrealizedPct) * 100;
+
+  profitDecayMap[ticker] = {
+    peak_unrealized_pct:    parseFloat(peakUnrealizedPct.toFixed(2)),
+    current_unrealized_pct: parseFloat(currentUnrealizedPct.toFixed(2)),
+    decay_from_peak_pct:    parseFloat(decayFromPeakPct.toFixed(2)),
+    pct_of_peak_given_back: parseFloat(pctOfPeakGivenBack.toFixed(1)),
+  };
+}
+
 // ── FUNDAMENTALS MAP ─────────────────────────────────────────────────────────
 const fundamentalsMap = {};
 for (const row of fundamentalsRows) {
@@ -411,6 +457,7 @@ return [{
     earningsAtRisk,
     stopProximity,
     correlationFlags,
+    profitDecay: profitDecayMap,
 
     // Signals & rotation
     signalsByNiche,

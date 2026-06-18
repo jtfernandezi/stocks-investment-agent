@@ -139,9 +139,22 @@ function formatPatternPerf(patternPerfMap) {
     const win_num = data.avg_win_pct     != null ? parseFloat(data.avg_win_pct)     : null;
     const los_num = data.avg_loss_pct    != null ? parseFloat(data.avg_loss_pct)    : null;
     const ev   = ev_num  != null ? ev_num.toFixed(2)  + '%' : 'N/A';
-    const warn = ev_num  != null && ev_num  < 0              ? ' ← NEGATIVE EV — DO NOT TRADE'    : '';
-    const note = ev_num  != null && ev_num  < 1.0 && ev_num >= 0 ? ' ← LOW EV — apply noise penalty' : '';
-    return `  ${p.padEnd(14)}: win ${wr_num  != null ? (wr_num * 100).toFixed(0) + '%' : 'N/A'} | avg_win ${win_num != null ? win_num.toFixed(1) + '%' : 'N/A'} | avg_loss ${los_num != null ? los_num.toFixed(1) + '%' : 'N/A'} | EV ${ev} (${data.total_trades} trades)${warn}${note}`;
+    const trades = Number(data.total_trades) || 0;
+    // Minimum-sample floor: EV from <5 closed trades is statistical noise — the prompt's
+    // own §7b rules (apply EV "ONLY to patterns with ≥5 closed trades ... Never block a
+    // trade on a negative EV derived from fewer than 5 trades") already say to ignore it.
+    // The "DO NOT TRADE" / "LOW EV" flags were rendered with NO sample gate, so a 2-trade
+    // TREND row (EV -3.49%) got flagged "DO NOT TRADE" and the orchestrator froze the book
+    // into cash through a +3pp SPY rally (2026-06-17 audit). Honor the documented floor:
+    // below 5 trades, surface the data but flag it as unreliable instead of actionable.
+    let flag = '';
+    if (trades >= 5) {
+      if (ev_num != null && ev_num < 0)                            flag = ' ← NEGATIVE EV — DO NOT TRADE';
+      else if (ev_num != null && ev_num < 1.0 && ev_num >= 0)      flag = ' ← LOW EV — apply noise penalty';
+    } else if (ev_num != null) {
+      flag = ' ← insufficient sample (n<5) — EV unreliable, ignore per §7b';
+    }
+    return `  ${p.padEnd(14)}: win ${wr_num  != null ? (wr_num * 100).toFixed(0) + '%' : 'N/A'} | avg_win ${win_num != null ? win_num.toFixed(1) + '%' : 'N/A'} | avg_loss ${los_num != null ? los_num.toFixed(1) + '%' : 'N/A'} | EV ${ev} (${trades} trades)${flag}`;
   }).join('\n');
 }
 

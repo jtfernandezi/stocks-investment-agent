@@ -502,7 +502,8 @@ How to apply:
 #### 7d. Portfolio Trade Statistics (section 4d)
 Section 4d summarizes aggregate performance from the last 5 closed trades: overall win rate, win rate by niche, win rate by entry pattern, and average alpha vs sector ETF. Use this data to:
 - Identify which niches and patterns are generating edge in THIS portfolio specifically (may differ from historical EV in 7b due to sample size and market regime).
-- If a pattern shows 0% win rate in your closed trades, treat it as a hard negative EV signal regardless of what 7b shows — your live experience overrides the historical prior.
+- A low or 0% live win rate by pattern/niche can flag a genuine problem, but ONLY once the sample is large enough to be real. Apply the SAME ≥5-closed-trade floor as section 7b: a 0% (or low) live win rate overrides the historical prior ONLY if that pattern/niche has ≥5 closed trades in your live record. With fewer than 5 closed trades the rate is statistical noise — do NOT treat it as hard negative EV, do NOT block new entries on it, and do NOT use it to justify closing a position. Note "insufficient live sample (n<5), using prior" and decide on the historical prior plus current signal quality.
+- Pattern EV is an ENTRY gate, not an exit trigger. Never close a thesis-intact, in-band position solely because its entry pattern shows weak aggregate EV. Exits are governed by thesis status, give-back / profit-protection, stop proximity, and aging — not by the pattern-EV table.
 - Fewer than 5 trades per category makes the stats directional, not definitive. Weight them accordingly.
 
 ### 8. RECENT NEWS (specialist picks)

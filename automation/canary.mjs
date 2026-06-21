@@ -151,6 +151,41 @@ async function isTradingDay(today) {
     }
   } catch (e) { issues.push(`Could not read watchlist: ${e.message}`); }
 
+  // ── CHECK: DB open trades reconcile with live Alpaca positions ──────────────
+  // A ticker OPEN in `trades` but absent from Alpaca = a phantom write: 08 blocked
+  // the BUY/SHORT at execution (e.g. a 2nd short in a sector) but Process Post-Trade
+  // still wrote it (Backlog #1; exercised live by the 06-18 SLB short). A ticker in
+  // Alpaca with no OPEN `trades` row = an untracked live position. Either is a silent
+  // DB↔broker desync: it can fire a false post-mortem, and via the
+  // trades_one_open_per_ticker unique index it makes a future real trade on that
+  // ticker silently fail to record. Runs after the close session has settled, so a
+  // steady-state mismatch at this hour is a genuine desync, not intraday timing.
+  try {
+    const base = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets/v2';
+    const r = await fetch(`${base}/positions`, {
+      headers: {
+        'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
+        'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+      },
+    });
+    const positions = await r.json();
+    if (!Array.isArray(positions)) {
+      issues.push(`Could not reconcile DB vs Alpaca — unexpected /positions response: ${JSON.stringify(positions).slice(0, 200)}`);
+    } else {
+      const alpacaTickers = new Set(positions.map(p => p.symbol));
+      const openRows = await sql`SELECT ticker FROM stocks.trades WHERE status = 'OPEN'`;
+      const dbTickers = new Set(openRows.map(row => row.ticker));
+      const phantom   = [...dbTickers].filter(t => !alpacaTickers.has(t)); // in DB, not Alpaca
+      const untracked = [...alpacaTickers].filter(t => !dbTickers.has(t)); // in Alpaca, not DB
+      if (phantom.length || untracked.length) {
+        const parts = [];
+        if (phantom.length)   parts.push(`phantom OPEN trades row(s) NOT held in Alpaca: ${phantom.join(', ')} (likely an 08-blocked BUY/SHORT still written by Process Post-Trade — Backlog #1; clean the trades + position_metadata rows)`);
+        if (untracked.length) parts.push(`live Alpaca position(s) with NO open trades row: ${untracked.join(', ')} (untracked position — Store Open Trade may have failed)`);
+        issues.push(`DB↔Alpaca position desync (${dbTickers.size} DB OPEN vs ${alpacaTickers.size} live) — ${parts.join('; ')}.`);
+      }
+    }
+  } catch (e) { issues.push(`Could not reconcile DB open trades vs Alpaca positions: ${e.message}`); }
+
   // ── REPORT ──────────────────────────────────────────────────────────────────
   if (issues.length === 0) {
     console.log(`[canary] ✅ all green (${stamp}) — silent.`);

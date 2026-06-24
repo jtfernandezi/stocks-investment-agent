@@ -543,7 +543,7 @@ return payloads.map(p => ({json: p}));
 ### [36] Trigger Post-Mortem
 - Node type: **Execute Workflow** (not HTTP Request)
 - Calls the Post-Mortem workflow (Workflow 3) directly by ID
-- One execution per SELL/COVER payload
+- **Mode: Run once for each item** (`mode: each`) — fires one Post-Mortem execution per SELL/COVER payload. ⚠️ Was once-for-all (`mode` unset) until 2026-06-24, which silently dropped every close after the first in a multi-SELL session (the sub-workflow only processes `.first()`). Must stay `each`.
 
 ---
 

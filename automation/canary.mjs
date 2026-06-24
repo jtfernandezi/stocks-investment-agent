@@ -183,6 +183,20 @@ async function isTradingDay(today) {
         if (untracked.length) parts.push(`live Alpaca position(s) with NO open trades row: ${untracked.join(', ')} (untracked position — Store Open Trade may have failed)`);
         issues.push(`DB↔Alpaca position desync (${dbTickers.size} DB OPEN vs ${alpacaTickers.size} live) — ${parts.join('; ')}.`);
       }
+
+      // position_metadata must also track live holdings. A row here with no live Alpaca
+      // position = stale entry metadata the close path failed to delete. It can fire a false
+      // trailing-stop post-mortem (Watchdog Find TS Exits flags metadata gone from Alpaca)
+      // and pollutes 02's open-position metrics. All closes now route through the Post-Mortem
+      // sub-workflow's Delete Position Metadata step, so a steady-state mismatch here means
+      // that cleanup failed. (Distinct from the trades check above — caught the 5 stale rows
+      // AMAT/DDOG/FTNT/GD/LHX that the trades-only check missed on 2026-06-24.)
+      const metaRows = await sql`SELECT ticker FROM stocks.position_metadata`;
+      const metaTickers = new Set(metaRows.map(row => row.ticker));
+      const staleMeta = [...metaTickers].filter(t => !alpacaTickers.has(t)); // in metadata, not Alpaca
+      if (staleMeta.length) {
+        issues.push(`Stale position_metadata (${metaTickers.size} rows vs ${alpacaTickers.size} live Alpaca) — row(s) with no live position: ${staleMeta.join(', ')} (close path did not delete metadata; risks false trailing-stop post-mortems — clean these rows).`);
+      }
     }
   } catch (e) { issues.push(`Could not reconcile DB open trades vs Alpaca positions: ${e.message}`); }
 

@@ -10,6 +10,9 @@ import { alpacaFetch } from '@/lib/alpaca';
 import { sql } from '@/lib/db';
 import { TICKER_NICHE, NICHE_DISPLAY, ALL_NICHES, START_CAPITAL } from '@/lib/constants';
 
+// Live dashboard — never statically prerender (queries Neon + Alpaca at request time).
+export const dynamic = 'force-dynamic';
+
 interface AlpacaAccount { equity: string; cash: string; buying_power: string; last_equity: string; long_market_value: string; short_market_value: string; }
 interface AlpacaPos    { symbol: string; qty: string; side: string; avg_entry_price: string; current_price: string; market_value: string; cost_basis: string; unrealized_pl: string; unrealized_plpc: string; }
 

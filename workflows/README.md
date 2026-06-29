@@ -61,7 +61,7 @@ OPENAI_ORCHESTRATOR_MODEL=gpt-5.1
 # node (model is in the node URL; key in the n8n credential "Gemini API").
 ```
 
-> **Note:** `POSTMORTEM_WEBHOOK_URL` is NOT needed. The post-mortem workflow is triggered via n8n's native Execute Workflow node (workflow-to-workflow execution), not HTTP webhook. Connect the "Trigger Post-Mortem" node directly to the Post-Mortem workflow ID in n8n.
+> **Note:** `POSTMORTEM_WEBHOOK_URL` is NOT needed. The post-mortem workflow is triggered via n8n's native Execute Workflow node (workflow-to-workflow execution), not HTTP webhook. Connect the "Trigger Post-Mortem" node directly to the Post-Mortem workflow ID in n8n. Set its **Mode to "Run once for each item"** (`mode: each`) so a multi-SELL session fires one post-mortem per close (fixed 2026-06-24 — the default once-for-all only processed the first).
 
 ## Code nodes
 

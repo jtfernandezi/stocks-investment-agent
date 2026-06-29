@@ -385,9 +385,17 @@ Daily canary fired a `trades`↔Alpaca position desync (14 DB OPEN vs 10 live: p
 
 Resolves IMPROVEMENT_BACKLOG #1 (prevention via Fix 1, detection via Fix 4) and the missed-close class. Fixes 1–3 are the "manual" n8n class — applied via the n8n API the same session (mode change + inline jsCode + one node-add), fresh-downloaded before each PUT, node counts/connections verified unchanged. `Prepare Position Metadata` is inline-only (no `workflows/code/` file). First real exercise of Fixes 1–3 is the next session that actually trades.
 
+## Enhancements (2026-06-28) — Trailing-stop silent failure + canary coverage check
+
+The 2026-06-22 09:32 ET morning batch (C, CEG, HBM, VRT) opened with **no trailing stops**. Root cause: `Wait For Fill` (5s) is shorter than actual fill latency for simultaneous batches of market orders — VRT filled 6m28s after submission. `Submit Trailing Stop` fired while the long buy was still open, so Alpaca rejected the sell-side stop ("cannot open a short sell while a long buy order is open" — the exact failure the original 5s wait was added for on 2026-05-28, just under-provisioned for slow batches). Single-order and fast-fill batches (midday and close sessions) are unaffected. The canary had no stop-coverage check, so the gap went undetected until the weekly audit.
+
+- **Canary trailing-stop coverage check** (PR #15, `[B-code]`, merged 2026-06-28) — `automation/canary.mjs` now fetches all open Alpaca positions and all open orders in parallel and alarms if any position has no matching `trailing_stop` order. Would have alarmed the evening of 06-22; alarms every day until the gap is closed. Monitoring-layer only (read-only, no trading impact).
+- **Prevention is `[B-spec]` (not yet built)** — two options: (a) lengthen `Wait For Fill` to ~30–60s (partial fix, still fails on multi-minute fills); (b) a Watchdog branch that ensures every live position has a trailing stop and submits one if missing (robust, self-healing). Prefer (b); requires manual n8n wiring.
+
 ## Known Open Issues
 
-None blocking. First 10-niche session is 2026-06-06 9:30 AM (healthcare/financials fundamentals populate at the 8:30 AM refresh; until then those tickers show "No data" — graceful, the specialist falls back to price/technicals/news).
+- **VRT and C have no trailing stops** (as of 2026-06-28 audit). The 06-22 morning batch silent-failure left them unprotected. Attach ATR×3 trailing stops via Alpaca or close VRT (−11%). Canary will alarm daily until resolved.
+- **`Wait For Fill` (5s) is too short for slow-fill batches.** Batch of 6 simultaneous market orders at 09:32 ET on 06-22 filled over 1–7 minutes; the 5s wait expired before fills completed → trailing stops rejected. Prevention `[B-spec]` (see Enhancements 2026-06-28). Midday/close sessions unaffected (single or fast-fill orders).
 
 ## position_metadata notes
 

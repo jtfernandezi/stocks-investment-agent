@@ -197,6 +197,38 @@ async function isTradingDay(today) {
       if (staleMeta.length) {
         issues.push(`Stale position_metadata (${metaTickers.size} rows vs ${alpacaTickers.size} live Alpaca) — row(s) with no live position: ${staleMeta.join(', ')} (close path did not delete metadata; risks false trailing-stop post-mortems — clean these rows).`);
       }
+
+      // Every live position must carry a protective trailing stop. The trailing stop is
+      // the fund's mechanical loss-protection layer (ATR×3, clamped 8–20%, GTC). On
+      // 2026-06-22 a batch of 4 longs (C, CEG, HBM, VRT) opened with NO trailing stop:
+      // Alpaca took up to 6.5 min to fill the simultaneous market orders while n8n's
+      // `Wait For Fill` waits only 5s, so `Submit Trailing Stop` fired before the buy
+      // filled and Alpaca rejected the (sell) stop. C and VRT then sat open and
+      // unprotected (VRT round-tripped to −11% with no floor) — fully invisible to
+      // monitoring. The position reconciliation above can't see this: the position IS
+      // tracked, it just has no stop. Runs at 4:30 PM ET after the close has settled, so
+      // a missing stop at this hour is a real coverage gap, not intraday entry timing.
+      if (positions.length) {
+        const ro = await fetch(`${base}/orders?status=open&limit=200`, {
+          headers: {
+            'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
+            'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+          },
+        });
+        const orders = await ro.json();
+        if (!Array.isArray(orders)) {
+          issues.push(`Could not verify trailing-stop coverage — unexpected /orders response: ${JSON.stringify(orders).slice(0, 200)}`);
+        } else {
+          const stopSymbols = new Set(orders.filter(o => o.type === 'trailing_stop').map(o => o.symbol));
+          const unprotected = positions.filter(p => !stopSymbols.has(p.symbol));
+          if (unprotected.length) {
+            const detail = unprotected
+              .map(p => `${p.symbol} (${p.side}, ${(parseFloat(p.unrealized_plpc) * 100).toFixed(1)}%)`)
+              .join(', ');
+            issues.push(`Unprotected position(s) — live in Alpaca with NO trailing-stop order: ${detail}. The trailing stop likely failed to submit (Wait For Fill < fill latency on a slow batch fill; see 2026-06-22 C/VRT). Attach a trailing stop or close the position; consider lengthening Wait For Fill / a Watchdog stop-reconciliation (Backlog #12).`);
+          }
+        }
+      }
     }
   } catch (e) { issues.push(`Could not reconcile DB open trades vs Alpaca positions: ${e.message}`); }
 

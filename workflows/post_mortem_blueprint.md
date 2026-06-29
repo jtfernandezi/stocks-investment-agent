@@ -23,13 +23,16 @@ The Code nodes reference other nodes by exact name:
       ↓
 [4] Call Post-Mortem LLM              (Native OpenAI node v1.3 — GPT-4o)
       ↓
-[5] Parse & Store Post-Mortem          (Code: post_mortem_store.js)
+[5] Parse Post-Mortem Output           (Code: post_mortem_store.js)
       ↓
-[6] Insert Trade Lesson                (Postgres INSERT into trade_lessons)
-      ↓
+[6] Update Trade Status                 (Postgres UPDATE trades SET status='CLOSED' … WHERE ticker AND status='OPEN')
+      ↓                                  ⟵ was [6] Insert Trade Lesson; migrated to `trades` 2026-06-03
 [7] Update Specialist Accuracy         (Postgres INSERT OR UPDATE specialist_accuracy)
       ↓
 [8] Update Pattern Performance         (Postgres INSERT OR UPDATE pattern_performance)
+      ↓
+[9] Delete Position Metadata           (Postgres DELETE FROM position_metadata WHERE ticker = $('Parse Post-Mortem Output').first().json.ticker)
+                                         ⟵ added 2026-06-24; single cleanup chokepoint for BOTH close paths
 ```
 
 ---

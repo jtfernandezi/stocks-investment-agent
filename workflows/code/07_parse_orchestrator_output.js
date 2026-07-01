@@ -123,11 +123,20 @@ const postMortemPayloads = closedPositions.map(action => {
   const entryDate = new Date(new Date(exitDate).getTime() - 30 * 86400000)
                       .toISOString().split('T')[0];
 
+  // Derive side from the live Alpaca position, not the SELL/COVER verb. The orchestrator
+  // sometimes issues SELL to close a short (execution treats SELL/COVER identically —
+  // both route to DELETE /positions), which previously made this infer LONG for a short
+  // close and inverted the post-mortem P&L sign (e.g. OKLO 2026-07-01: a profitable short
+  // was recorded as a losing long). Alpaca's position.side is ground truth; only fall back
+  // to the verb if the position already vanished before this ran (shouldn't happen in
+  // practice — SELL/COVER always resolves against a still-open position here).
+  const closedDirection = position ? position.side : (action.action === 'SELL' ? 'long' : 'short');
+
   return {
     ticker,
     niche:                       action.niche,
-    side:                        action.action === 'SELL' ? 'LONG' : 'SHORT',
-    direction:                   action.action === 'SELL' ? 'long' : 'short',
+    side:                        closedDirection === 'long' ? 'LONG' : 'SHORT',
+    direction:                   closedDirection,
     action:                      action.action,
     exit_reason:                 action.exit_reason,
     exit_price:                  priceMap[ticker] ? priceMap[ticker].current : null,

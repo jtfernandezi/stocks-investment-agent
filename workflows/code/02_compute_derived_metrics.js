@@ -215,6 +215,9 @@ for (const pos of positions) {
     current_unrealized_pct: parseFloat(currentUnrealizedPct.toFixed(2)),
     decay_from_peak_pct:    parseFloat(decayFromPeakPct.toFixed(2)),
     pct_of_peak_given_back: parseFloat(pctOfPeakGivenBack.toFixed(1)),
+    // Once give-back has erased the whole peak (current P&L <= 0), there is no
+    // profit left to protect — the "profit_taking" exit reason no longer applies.
+    still_profitable:       currentUnrealizedPct > 0,
   };
 }
 

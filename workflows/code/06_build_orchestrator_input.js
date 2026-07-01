@@ -75,7 +75,7 @@ function formatPositions(positions, stopProximity, earningsAtRisk, priceMap, pro
 
     const decay = (profitDecay || {})[ticker];
     const decayStr = decay
-      ? `\n    Peak gain: +${decay.peak_unrealized_pct.toFixed(2)}% | Given back: ${decay.decay_from_peak_pct.toFixed(2)}pp (${decay.pct_of_peak_given_back.toFixed(0)}% of peak)${decay.pct_of_peak_given_back >= 50 ? ' ← SIGNIFICANT GIVE-BACK' : ''}`
+      ? `\n    Peak gain: +${decay.peak_unrealized_pct.toFixed(2)}% | Given back: ${decay.decay_from_peak_pct.toFixed(2)}pp (${decay.pct_of_peak_given_back.toFixed(0)}% of peak)${decay.pct_of_peak_given_back >= 50 ? ' ← SIGNIFICANT GIVE-BACK' : ''}${decay.still_profitable ? '' : ' ← NOW NEGATIVE, no profit left to protect'}`
       : '';
 
     return [
@@ -598,10 +598,11 @@ For SHORT positions, apply this rule with the correct inversion:
 - A SHORT with positive P&L (stock declining as expected, thesis playing out) is NOT subject to this aging rule regardless of days held — do not close a winning short just because it is old.
 
 ### Profit-taking and give-back protection
-Each open position's listing in section 2 shows "Peak gain" (its best unrealized gain since entry, derived from intraday highs/lows) and "Given back" (how much of that peak has been lost, in percentage points and as a % of the peak). The trailing stop only reacts to price — it has no memory of how much profit a position once had, and the stop band (8-20%) is often wider than a typical give-back. A position can run from +8% to -3% without ever testing its stop. Treat significant give-back as its own sell signal, independent of thesis status and stop proximity:
-- Peak gain ≥5% AND give-back ≥50% of that peak (flagged "← SIGNIFICANT GIVE-BACK" in the position data) AND no fresh TREND/REVERSAL confirmation this session → strong candidate to close now and bank what remains, rather than waiting for the thesis to fully break or the stop to be hit. Use exit_reason: "profit_taking".
+Each open position's listing in section 2 shows "Peak gain" (its best unrealized gain since entry, derived from intraday highs/lows) and "Given back" (how much of that peak has been lost, in percentage points and as a % of the peak). The trailing stop only reacts to price — it has no memory of how much profit a position once had, and the stop band (8-20%) is often wider than a typical give-back. A position can run from +8% to -3% without ever testing its stop. Treat significant give-back as its own sell signal, independent of thesis status and stop proximity — but this is a profit-PROTECTION rule, not a loss-cutting rule, so it only applies while the position is still net profitable:
+- Peak gain ≥5% AND give-back ≥50% of that peak (flagged "← SIGNIFICANT GIVE-BACK" in the position data) AND the position is still net positive (current P&L > 0) AND no fresh TREND/REVERSAL confirmation this session → strong candidate to close now and bank what remains, rather than waiting for the thesis to fully break or the stop to be hit. Use exit_reason: "profit_taking".
+- If the position has already gone net negative (flagged "← NOW NEGATIVE, no profit left to protect" in the position data — give-back has erased the entire peak), do NOT use exit_reason "profit_taking": there is no profit left to bank, so closing it now would just be a loss with worse timing than the stop would give it. Fall through to the standard thesis/stop/aging rules instead — do not force a close purely because the position once had a bigger unrealized gain.
 - If the position is still meaningfully profitable (current P&L comfortably positive) and give-back is moderate (<50% of peak), trimming half and holding the rest is the more conservative response — do not force a full exit on a position that is still working.
-- If a position's peak gain reached >20% at any point, always weigh trimming half and tightening the stop on the remainder, regardless of current give-back level.
+- If a position's peak gain reached >20% at any point, always weigh trimming half and tightening the stop on the remainder while it is still profitable, rather than waiting for a full round-trip.
 - Do not apply this rule to positions with no "Peak gain" shown — they have never been meaningfully profitable since entry and are governed by the standard thesis/stop/aging rules instead.
 
 ## YOUR DECISION PROCESS
@@ -614,7 +615,7 @@ For every open position:
 3. Signal history shows REVERSAL (3+ consecutive opposing sessions)? → Strong case to exit.
 4. Earnings ≤2 days? → Evaluate earnings risk — lean toward closing.
 5. Stop proximity 🔴 (<3%) with weakening thesis? → Consider closing proactively.
-6. Significant give-back from peak gain (see "Peak gain" / "Given back" in position data)? → Apply profit-taking and give-back protection, independent of thesis status.
+6. Significant give-back from peak gain while STILL net profitable (see "Peak gain" / "Given back" in position data)? → Apply profit-taking and give-back protection, independent of thesis status. If give-back has already erased the peak and P&L is net negative, this rule no longer applies — use standard thesis/stop/aging rules instead.
 7. Held >30 days with negative P&L and no TREND confirmation? → Apply position aging rule.
 
 **Assessing thesis_intact for SHORT positions — the direction inverts:**

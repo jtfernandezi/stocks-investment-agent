@@ -9,7 +9,7 @@ Two scheduled jobs that watch the fund and help it get better over time, **witho
 | Job | Schedule | What it does | Touches code? |
 |-----|----------|--------------|---------------|
 | **Daily canary** (`canary.mjs`) | Weekdays 21:30 UTC (4:30 PM ET — after market close) | Deterministic integrity check (no LLM). Catches the silent-failure class (cash deadlock, frozen watchlist, partial signals, swallowed query errors); reconciles **both** `trades` (status=OPEN) **and** `position_metadata` against live Alpaca positions (phantom / untracked / stale-metadata desync); and **alarms if any live position has no open `trailing_stop` order** (stop-coverage check added 2026-06-28, PR #15). Silent when healthy; **Telegram alarm only on failure.** | No |
-| **Weekly audit** (`weekly_audit_prompt.md`) | Sunday 07:00 UTC (01:00 Mexico City, overnight Sat→Sun) | Headless Claude Code does a full 7-lever audit, reads prior reports + the Initiatives Register (longitudinal), writes `audits/<date>.md`, and **codes its proposals into Pull Requests** — one PR per change, tiered `[A]` (tunable fix) / `[B-code]` (isolated code-only change) / `[B-spec]` (n8n-wiring or strategy → spec only). Lever 7 also runs a **generative R&D** pass that advances a maturity-graded research agenda. Telegrams a digest linking every PR. Runs overnight so it doesn't compete with your daytime token budget. | Codes into PRs — **never merges, never deploys** |
+| **Weekly audit** (`weekly_audit_prompt.md`) | Sunday 05:00 UTC (01:00 Chile standard time, overnight Sat→Sun) | Headless Claude Code does a full 7-lever audit, reads prior reports + the Initiatives Register (longitudinal), writes `audits/<date>.md`, and **codes its proposals into Pull Requests** — one PR per change, tiered `[A]` (tunable fix) / `[B-code]` (isolated code-only change) / `[B-spec]` (n8n-wiring or strategy → spec only). Lever 7 also runs a **generative R&D** pass that advances a maturity-graded research agenda. Telegrams a digest linking every PR. Runs overnight so it doesn't compete with your daytime token budget. | Codes into PRs — **never merges, never deploys** |
 | **Sync n8n** (`sync_n8n.mjs`) | On merge to `main` touching `workflows/code/**.js` | Pushes each changed code file into its live n8n Code node so **merge == deploy** for code-node edits (the only thing `[A]`/`[B-code]` PRs produce). Fresh-downloads, diffs, PUTs only changes; a **drift guard** refuses to overwrite a node hand-edited in n8n (skips + Telegrams instead). Can NEVER add/rewire a node. Telegrams what synced. | Replaces existing node `jsCode` only — **never adds/rewires nodes, never merges** |
 
 ## Safety model (why this can't break the fund)
@@ -36,7 +36,7 @@ The inviolable rule is **never auto-merged / never deployed** — *not* "never c
 
 **Launchers** — how you start things
 - `.github/workflows/daily-canary.yml` — tells GitHub "run canary.mjs every weekday at 4:30 PM ET" ☁️
-- `.github/workflows/weekly-audit.yml` — tells GitHub "run the audit every Sunday 01:00 Mexico City" ☁️
+- `.github/workflows/weekly-audit.yml` — tells GitHub "run the audit every Sunday 01:00 Chile standard time" ☁️
 - `.github/workflows/sync-n8n.yml` — tells GitHub "push code-node changes to live n8n on every merge to main" ☁️
 - `run_canary.sh` — run canary manually from your Mac 💻
 - `run_weekly_audit.sh` — run audit manually from your Mac 💻
@@ -61,14 +61,14 @@ The inviolable rule is **never auto-merged / never deployed** — *not* "never c
 gh workflow list
 gh run list --workflow=daily-canary.yml --limit 5
 gh workflow run daily-canary.yml      # manual canary run (no Claude tokens)
-gh workflow run weekly-audit.yml -f model=opus    # manual audit run (uses tokens)
+gh workflow run weekly-audit.yml -f model=claude-fable-5    # manual audit run (uses tokens)
 ```
 
 **Local launchd (optional fallback):** plists in `~/Library/LaunchAgents/` (`com.stocks.daily-canary` / `com.stocks.weekly-audit`). Removed once the cloud version is validated to avoid double-firing. Local on-demand runs:
 
 ```bash
 bash automation/run_canary.sh && tail -n 30 automation/logs/canary.log   # read-only, safe
-AUDIT_MODEL=opus bash automation/run_weekly_audit.sh                      # opens a PR via gh
+AUDIT_MODEL=claude-fable-5 bash automation/run_weekly_audit.sh            # opens a PR via gh
 ```
 
 ## Reviewing a weekly audit

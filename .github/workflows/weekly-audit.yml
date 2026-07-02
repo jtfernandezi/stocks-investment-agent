@@ -8,14 +8,16 @@ name: Weekly Audit
 
 on:
   schedule:
-    # 07:00 UTC Sunday = 01:00 America/Mexico_City (UTC-6, no DST) — overnight
-    # Sat->Sun, so the PR + digest are waiting when you wake Sunday.
-    - cron: "0 7 * * 0"
+    # 05:00 UTC Sunday = 01:00 America/Santiago (Chile, UTC-4 standard/winter
+    # time). Chile observes DST (UTC-3, ~Sep-Apr) which cron can't follow, so
+    # during DST this fires at 2 AM Chile instead of 1 AM. Overnight Sat->Sun,
+    # so the PR + digest are waiting when you wake Sunday.
+    - cron: "0 5 * * 0"
   workflow_dispatch:
     inputs:
       model:
-        description: "Claude model (sonnet = reliable on subscription quota; opus = deeper but may hit session limits)"
-        default: "opus"
+        description: "Claude model (sonnet = reliable on subscription quota; opus = deeper but may hit session limits; fable = claude-fable-5)"
+        default: "claude-fable-5"
         required: false
 
 permissions:
@@ -62,7 +64,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AUDIT_MODEL: ${{ github.event.inputs.model || 'opus' }}
+          AUDIT_MODEL: ${{ github.event.inputs.model || 'claude-fable-5' }}
         run: |
           claude -p "$(cat automation/weekly_audit_prompt.md)" \
             --model "$AUDIT_MODEL" \

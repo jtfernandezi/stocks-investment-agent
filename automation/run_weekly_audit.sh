@@ -27,7 +27,7 @@ if [ -n "$CLAUDE" ]; then
   export PATH="$NODE_BIN_DIR:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 fi
 
-AUDIT_MODEL="${AUDIT_MODEL:-opus}"   # weekly + judgment-heavy → quality over cost. Override via env.
+AUDIT_MODEL="${AUDIT_MODEL:-claude-fable-5}"   # weekly + judgment-heavy → quality over cost. Override via env.
 DATE="$(TZ=America/New_York date +%F)"
 mkdir -p "$PROJECT_DIR/automation/logs"
 LOG="$PROJECT_DIR/automation/logs/audit-$DATE.log"

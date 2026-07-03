@@ -130,6 +130,8 @@ function formatSpecialistSignals(specialists) {
 // ── HELPER: Format pattern performance ───────────────────────────────────────
 function formatPatternPerf(patternPerfMap) {
   const patterns = ['TREND', 'BIAS', 'NOISE', 'REVERSAL', 'FIRST_SIGNAL'];
+  const allClosedTrades = patterns.reduce(
+    (sum, p) => sum + (Number((patternPerfMap[p] || {}).total_trades) || 0), 0);
   return patterns.map(p => {
     const data = patternPerfMap[p] || {};
     if (!data.total_trades) return `  ${p.padEnd(14)}: No data yet`;
@@ -149,7 +151,19 @@ function formatPatternPerf(patternPerfMap) {
     // below 5 trades, surface the data but flag it as unreliable instead of actionable.
     let flag = '';
     if (trades >= 5) {
-      if (ev_num != null && ev_num < 0)                            flag = ' ← NEGATIVE EV — DO NOT TRADE';
+      // Dominant-pattern guard: when one pattern holds most of the closed-trade record
+      // (TREND was 17 of 25 = 68% on 2026-07-03), its EV is statistically the fund's
+      // OVERALL record, not pattern-specific edge — and since nearly every new entry
+      // gets the same label, "DO NOT TRADE" on it acts as a fund-wide entry veto
+      // (the 98%-cash deadlock of 2026-06-24→07-02). Surface the EV honestly but
+      // strip the categorical veto; §7b's dominant-pattern rule tells the
+      // orchestrator to judge setups individually and use sizing, not refusal.
+      const share = allClosedTrades > 0 ? trades / allClosedTrades : 0;
+      if (ev_num != null && ev_num < 0) {
+        flag = share >= 0.6
+          ? ` ← DOMINANT PATTERN (${(share * 100).toFixed(0)}% of all closed trades) — EV mirrors the fund's overall record, NOT pattern-specific edge; not a blanket veto on new entries, see §7b dominant-pattern rule`
+          : ' ← NEGATIVE EV — DO NOT TRADE';
+      }
       else if (ev_num != null && ev_num < 1.0 && ev_num >= 0)      flag = ' ← LOW EV — apply noise penalty';
     } else if (ev_num != null) {
       flag = ' ← insufficient sample (n<5) — EV unreliable, ignore per §7b';
@@ -492,7 +506,8 @@ Example:
   FIRST_SIGNAL→ 44% / +7.1% / -6.8% / +0.1%   ← near-zero EV, require confirmation
 
 Rules (apply ONLY to patterns with ≥5 closed trades — below that the EV is statistical noise):
-- Negative EV pattern with ≥5 trades → do NOT open new positions, regardless of signal quality.
+- Negative EV pattern with ≥5 trades → do NOT open new positions, regardless of signal quality — UNLESS it is flagged as a dominant pattern (next rule).
+- Dominant-pattern exception: when a single pattern accounts for ≥60% of ALL closed trades (it will be flagged "DOMINANT PATTERN" in the table), its EV is statistically indistinguishable from the fund's overall track record and carries no pattern-specific information — there is no alternative pattern to rotate into, because nearly every entry receives the same label. Do NOT use its negative EV as a blanket veto on all new entries. Judge each setup on its own merits (signal quality, conviction, regime, risk rules) and express the caution it warrants through SIZING (reduce one tier), tighter stops, or selectivity — not by refusing every entry. Sitting ~100% in cash because the catch-all pattern label shows negative EV is itself an uncompensated active bet against the mandate to beat SPY.
 - EV < 1.0% with ≥5 trades → apply noise penalty (reduce one tier).
 - EV > 5.0% with win_rate > 60% and ≥5 trades → validated edge, prioritize over other entries.
 - Fewer than 5 trades for a pattern → EV is unreliable; IGNORE it and apply standard conviction rules. Never block a trade on a negative EV derived from fewer than 5 trades — early in the experiment this would freeze the book.

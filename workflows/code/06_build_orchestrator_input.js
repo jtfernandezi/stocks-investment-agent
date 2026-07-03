@@ -305,6 +305,10 @@ function formatTechnicals(tickers, priceMap) {
       : p.rsi14 < 30 ? `${p.rsi14} (oversold)`
       : `${p.rsi14} (neutral)`;
 
+    const extStr = p.ext_20d_pct != null
+      ? `${p.ext_20d_pct >= 0 ? '+' : ''}${p.ext_20d_pct}% vs 20d MA${p.ext_20d_pct > 5 ? ' ⛔ EXTENDED (long entries blocked in code)' : p.ext_20d_pct < -5 ? ' ⛔ WASHED OUT (short entries blocked in code)' : ''}`
+      : 'N/A';
+
     const sma50Str = p.sma50 != null
       ? `${p.current >= p.sma50 ? '+' : ''}${((p.current - p.sma50) / p.sma50 * 100).toFixed(1)}% ${p.current >= p.sma50 ? 'above' : 'below'}`
       : 'N/A (<50 bars)';
@@ -315,7 +319,7 @@ function formatTechnicals(tickers, priceMap) {
 
     const pct52wStr = p.pct_52w != null ? `${p.pct_52w}th pct` : 'N/A';
 
-    return `  ${ticker}: RSI ${rsiLabel} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr}`;
+    return `  ${ticker}: RSI ${rsiLabel} | 20d MA ${extStr} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr}`;
   }).join('\n');
 }
 
@@ -548,7 +552,8 @@ Use news to:
 RSI(14), 50-day and 200-day simple moving averages, and 52-week range percentile for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
 
 Use technicals to:
-- **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier unless the TREND pattern is very strong. For shorts, overbought RSI confirms the setup.
+- **20d MA extension — the entry-timing gate (enforced in code):** a long more than +5% above its 20d MA, or a short more than -5% below it, is chasing an extended move and WILL be blocked at execution regardless of your output. Do not propose these entries — put the ticker on the watchlist with a pullback trigger instead ("enter on retracement toward the 20d MA"). The best long entry in an uptrend is the pullback toward the mean while the trend (50d/200d MA) remains intact; the best short entry is the failed bounce back toward the mean in a downtrend — never the washed-out low. News-driven conviction does not override this: by the time news reaches you, the pop it caused is usually the wrong price.
+- **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier. For shorts, overbought RSI confirms the setup.
 - **RSI < 30 (oversold):** a short entry here is risky — a bounce is likely. For longs, oversold RSI on a BULLISH signal is a high-conviction entry point.
 - **Price above 50d MA:** stock is in a short-term uptrend. Confirms a BULLISH long thesis.
 - **Price below 50d MA:** stock is in a short-term downtrend. Confirms a BEARISH short thesis. A BULLISH signal on a stock below its 50d MA needs stronger conviction — document the divergence.
@@ -556,7 +561,7 @@ Use technicals to:
 - **Price below 200d MA:** long-term downtrend. Shorts are favored; longs require exceptional catalyst.
 - **52w percentile > 90th:** stock is near all-time highs — momentum is strong but risk/reward is compressed for new longs.
 - **52w percentile < 10th:** stock is near 52-week lows — falling knife risk for longs; natural short setup if the thesis is deteriorating.
-- Do not veto a HIGH conviction TREND signal solely on technicals — but document conflicts and apply a size tier reduction if two or more technical factors oppose the trade direction.
+- Timing outranks conviction for ENTRIES: a great thesis at a bad price is a bad trade. When technicals say the move is extended, the correct action is watchlist-with-trigger, not a smaller chase.
 
 ## POSITION SIZING RULES
 

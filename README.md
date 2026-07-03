@@ -42,7 +42,7 @@ Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/posi
 The system improves automatically over time without code changes:
 
 1. **Effective confidence calibration** — each specialist's raw confidence is scaled by `hit_rate_30d / avg_reported_confidence_30d`. Consistently overconfident specialists are discounted; underconfident ones are trusted more.
-2. **Pattern EV tracking** — historical expected value per signal pattern (TREND/BIAS/NOISE/REVERSAL/FIRST_SIGNAL). Patterns with negative EV block new entries. Patterns with EV > 5% get priority.
+2. **Pattern EV tracking** — historical expected value per entry pattern. Since 2026-07-03 entries are classified by measurable price conditions at execution (PULLBACK / BREAKOUT / MOMENTUM / COUNTER_TREND / EXTENDED / CAPITULATION from 20d-SMA extension, 50d trend side, and volume); legacy signal-persistence labels (TREND/BIAS/...) remain as history. Negative-EV patterns (≥5 trades) block new entries unless the pattern is flagged dominant (≥60% of all closed trades — then its EV is just the fund's overall record and blocks nothing). EV > 5% gets priority.
 3. **Trade lessons injection** — last 5 post-mortem lessons are injected into the orchestrator each session. Mistakes are actively checked before opening similar trades.
 4. **Counterfactual tracking** — alternative picks (not chosen) are tracked for the same hold period to validate or challenge stock selection decisions.
 
@@ -79,11 +79,15 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 - **Max short exposure:** $12,000 (20% of portfolio)
 - **Max open positions:** 12 (longs + shorts combined)
 - **Max per sector:** up to 2 longs (2nd requires TREND pattern + ≤$5k size) + 1 short
+- **Entry-extension gate (2026-07-03):** no BUY more than +5% above the 20d SMA, no SHORT more than -5% below it — hard-blocked in code. Entries happen on pullbacks toward the mean, never chases.
+- **Entry throttle (2026-07-03):** max 2 new positions and $12k new exposure per session — deployment staggers across sessions instead of all-at-once batch bets.
 - **Trailing stops:** ATR × 3, clamped 8–20%, set natively via Alpaca GTC orders
 - **Penalties (stack multiplicatively):** correlation >0.70 with open position, earnings ≤2 days, NOISE signal history, FIRST_SIGNAL — each reduces sizing one tier
-- **Thesis stop:** mandatory immediate exit when specialist flips direction
+- **Minimum hold (2026-07-03):** no judgment-based exit (thesis flip / profit taking / aging) in a position's first 5 trading days — the trailing stop and earnings exit are the only exits during that window
+- **Thesis stop:** exit when the specialist's flip is confirmed across 2+ consecutive sessions AND price breaks the 20d MA against the position (one-session flips are news noise — they went 0-for-6 as exit signals)
 - **Earnings exit:** default close before earnings ≤2 days unless exceptional conditions met
-- **Give-back protection:** each open position's peak unrealized gain since entry (and how much has been given back) is computed every session and shown to the orchestrator. A position that has given back ≥50% of a ≥5% peak gain with no fresh momentum is treated as an independent profit-taking signal — it doesn't have to wait for thesis breakage or the (wide, 8–20%) trailing stop to trigger.
+- **Give-back protection:** each open position's peak unrealized gain since entry (and how much has been given back) is computed every session and shown to the orchestrator. A position that has given back ≥50% of a ≥8% peak gain, while still net profitable, with no fresh momentum is treated as an independent profit-taking signal — it doesn't have to wait for thesis breakage or the (wide, 8–20%) trailing stop to trigger. Default on a winning intact-thesis position is HOLD.
+- **Computed market regime (2026-07-03):** BULL/NEUTRAL/BEAR derived from SPY vs its 20d/50d SMAs + sector-ETF breadth, with net exposure targets per regime (BULL 60–110% / NEUTRAL 20–60% / BEAR −20–+30%). Replaces the orchestrator's self-assessed regime read.
 
 ## Database Schema (Neon — `stocks` schema)
 
@@ -94,8 +98,8 @@ Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no 
 | `watchlist` | Stocks flagged for monitoring with entry trigger |
 | `earnings_calendar` | Upcoming earnings dates per ticker |
 | `correlation_matrix` | Pairwise 90-day correlation for all 100 stocks |
-| `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus, price targets (morning refresh) |
-| `trade_lessons` | Post-mortem analysis + key lesson per closed trade |
+| `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus (morning refresh) |
+| `trades` | Unified trade lifecycle — OPEN at entry, CLOSED with full post-mortem attribution at exit; source of truth for trade history |
 | `specialist_accuracy` | 30-day hit rate, scaling factor, calibration error per specialist |
 | `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
 | `investor_letters` | LLM-written investor letters per close session (session UNIQUE) |

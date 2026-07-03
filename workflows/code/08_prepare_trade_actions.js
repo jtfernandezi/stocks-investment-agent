@@ -27,7 +27,17 @@ const openOrders = $("Compute Derived Metrics").first().json.openOrders || [];
 
 const MAX_POSITIONS  = 12;
 const MAX_SHORT_USD  = 12000;
+// Entry-extension gate: block entries chasing an extended move. The 2026-07-03
+// closed-trade audit showed losing longs were bought avg +5% into 5-day run-ups
+// and losing shorts were sold 12-16% below the 20d SMA after the collapse already
+// happened — late entries in both directions, then mean reversion took them out.
+// A long more than +5% above its 20d SMA (or a short more than -5% below it) is
+// chasing; the right entry is the pullback toward the mean, which a later session
+// will offer or not.
+const MAX_ENTRY_EXTENSION_PCT = 5;
 // Per sector: max 2 longs (1st free; 2nd requires TREND + ≤$5k) + 1 short
+
+const priceMapForGate = $("Compute Derived Metrics").first().json.priceMap || {};
 
 // Build current state from open positions (pre-trade snapshot)
 const currentPositions = $("Compute Derived Metrics").first().json.positions || [];
@@ -105,6 +115,21 @@ const filteredActions = actions.filter(action => {
   if (openTickers.has(action.ticker)) {
     console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: position already open`);
     return false;
+  }
+
+  // 0b. Entry-extension gate — block entries chasing an extended move.
+  // Fail-open when extension data is missing (no bars for the ticker): the gate
+  // exists to stop chasing, not to freeze the book on a data gap.
+  const ext = (priceMapForGate[action.ticker] || {}).ext_20d_pct;
+  if (ext != null) {
+    if (isBuy && ext > MAX_ENTRY_EXTENSION_PCT) {
+      console.log(`[LIMIT] Skipping BUY ${action.ticker}: +${ext}% above 20d SMA (max +${MAX_ENTRY_EXTENSION_PCT}% — chasing an extended move; wait for the pullback)`);
+      return false;
+    }
+    if (isShort && ext < -MAX_ENTRY_EXTENSION_PCT) {
+      console.log(`[LIMIT] Skipping SHORT ${action.ticker}: ${ext}% below 20d SMA (max -${MAX_ENTRY_EXTENSION_PCT}% — the collapse already happened; shorting the washout invites the squeeze)`);
+      return false;
+    }
   }
 
   // 1. Max positions cap

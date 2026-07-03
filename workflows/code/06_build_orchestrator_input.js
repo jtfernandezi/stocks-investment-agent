@@ -129,7 +129,12 @@ function formatSpecialistSignals(specialists) {
 
 // ── HELPER: Format pattern performance ───────────────────────────────────────
 function formatPatternPerf(patternPerfMap) {
-  const patterns = ['TREND', 'BIAS', 'NOISE', 'REVERSAL', 'FIRST_SIGNAL'];
+  // Legacy signal-history labels first (existing closed-trade history), then any
+  // price-based entry-quality labels (PULLBACK/BREAKOUT/... — accumulating since
+  // 2026-07-03) present in the table. Legacy labels with no row are still shown
+  // as "No data yet" so the orchestrator sees the full historical taxonomy.
+  const legacy = ['TREND', 'BIAS', 'NOISE', 'REVERSAL', 'FIRST_SIGNAL'];
+  const patterns = [...legacy, ...Object.keys(patternPerfMap).filter(p => !legacy.includes(p)).sort()];
   const allClosedTrades = patterns.reduce(
     (sum, p) => sum + (Number((patternPerfMap[p] || {}).total_trades) || 0), 0);
   return patterns.map(p => {
@@ -500,7 +505,9 @@ These caps are already applied in the number you see. Do not override them based
 **Always use effective_confidence (not raw reported_confidence) when applying sizing rules.**
 
 #### 7b. Pattern Performance — Expected Value by Entry Pattern (pattern_performance table)
-Historical expected value (EV) of closed trades grouped by signal pattern:
+Historical expected value (EV) of closed trades grouped by entry pattern.
+
+Two taxonomies coexist in this table. Legacy labels (TREND/BIAS/NOISE/REVERSAL/FIRST_SIGNAL) classified trades by signal-history persistence and cover trades entered before 2026-07-03 — they proved non-discriminative (one label absorbed ~everything). Trades entered from 2026-07-03 onward are classified by measurable PRICE conditions at entry: PULLBACK (retracement toward the 20d MA within an intact trend — the intended default entry), BREAKOUT (fresh move +2–5% past the 20d MA on ≥1.5x volume), MOMENTUM (same zone, normal volume), COUNTER_TREND (entry against the 50d MA trend), EXTENDED (chasing >5% past the mean), CAPITULATION (entering into a >5% adverse washout). Judge new entries against the new labels as their sample builds; the legacy rows are history, not guidance.
 
 Example:
   TREND       → 68% / +11.2% / -4.8% / +6.1%  ← strong positive EV, proceed normally

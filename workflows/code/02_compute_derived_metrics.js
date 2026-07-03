@@ -103,6 +103,19 @@ for (const [ticker, bars] of Object.entries(allBars)) {
       : parseFloat((100 - (100 / (1 + avgGain / avgLoss))).toFixed(1));
   }
 
+  // SMA20 + extension % — entry-timing discipline. The 2026-07-03 closed-trade audit
+  // showed losing longs were bought avg +5% into 5-day run-ups (IREN +24.6% above its
+  // 20d SMA) and losing shorts sold 12-16% BELOW the 20d SMA after the collapse — the
+  // fund was chasing extended moves in both directions. Extension vs the 20d mean is
+  // the gate metric: 08 hard-blocks entries beyond ±5%, and the price-based entry
+  // taxonomy (07) buckets every entry by it.
+  const sma20 = sorted.length >= 20
+    ? parseFloat((sorted.slice(-20).reduce((a, b) => a + b.c, 0) / 20).toFixed(2))
+    : null;
+  const ext20dPct = sma20 != null
+    ? parseFloat(((current - sma20) / sma20 * 100).toFixed(2))
+    : null;
+
   // SMA50 / SMA200
   const sma50 = sorted.length >= 50
     ? parseFloat((sorted.slice(-50).reduce((a, b) => a + b.c, 0) / 50).toFixed(2))
@@ -131,6 +144,8 @@ for (const [ticker, bars] of Object.entries(allBars)) {
     adv_20:         Math.round(adv_20),
     adv_ratio,
     rsi14,
+    sma20,
+    ext_20d_pct:    ext20dPct,
     sma50,
     sma200,
     pct_52w:        pct52w,
@@ -367,6 +382,38 @@ const rotationSummary = NICHES.map(niche => {
   return { niche, momentum, pattern: h.pattern, current_direction: dirs[dirs.length - 1] };
 });
 
+// ── MARKET REGIME (computed — replaces the orchestrator's self-assessed read) ──
+// Deployment timing has been inverted twice: heavy at tops (specialist bullishness
+// peaks after rallies), full cash during rallies (post-drawdown fear). The prompt
+// told the orchestrator to "assess regime from the SPY price table" — it did so
+// with lagging sentiment. This computes the regime deterministically from data
+// already fetched: SPY vs its 20d/50d SMAs + market breadth (% of the 10 sector
+// ETFs above their own 20d SMA). 06 prints it with an explicit deployment target.
+const marketRegime = (() => {
+  const spy = priceMap['SPY'];
+  if (!spy || spy.sma20 == null) return null;
+  const spyVs20 = spy.ext_20d_pct;
+  const spyVs50 = spy.sma50 != null
+    ? parseFloat(((spy.current - spy.sma50) / spy.sma50 * 100).toFixed(2))
+    : null;
+  const etfTickers = Object.values(NICHE_ETF);
+  const withSma = etfTickers.filter(t => priceMap[t] && priceMap[t].sma20 != null);
+  const above   = withSma.filter(t => priceMap[t].current >= priceMap[t].sma20);
+  const breadthPct = withSma.length > 0
+    ? Math.round(above.length / withSma.length * 100)
+    : null;
+  let label = 'NEUTRAL';
+  if (spyVs20 > 0 && (spyVs50 == null || spyVs50 > 0) && (breadthPct == null || breadthPct >= 60)) label = 'BULL';
+  else if (spyVs20 < 0 && (spyVs50 == null || spyVs50 < 0) && (breadthPct == null || breadthPct <= 40)) label = 'BEAR';
+  return {
+    label,
+    spy_vs_sma20_pct: spyVs20,
+    spy_vs_sma50_pct: spyVs50,
+    breadth_pct_etfs_above_sma20: breadthPct,
+    spy_chg_5d_pct: spy.chg_5d_pct,
+  };
+})();
+
 // ── PORTFOLIO P&L VS SPY ──────────────────────────────────────────────────────
 const spyBars = allBars['SPY'] || [];
 const spyCurrent = spyBars.length > 0 ? spyBars[spyBars.length - 1].c : null;
@@ -467,6 +514,7 @@ return [{
     signalsByNiche,
     signalCountByNiche,
     rotationSummary,
+    marketRegime,
 
     // P&L
     portfolioValue,

@@ -129,7 +129,12 @@ function formatSpecialistSignals(specialists) {
 
 // ── HELPER: Format pattern performance ───────────────────────────────────────
 function formatPatternPerf(patternPerfMap) {
-  const patterns = ['TREND', 'BIAS', 'NOISE', 'REVERSAL', 'FIRST_SIGNAL'];
+  // Legacy signal-history labels first (existing closed-trade history), then any
+  // price-based entry-quality labels (PULLBACK/BREAKOUT/... — accumulating since
+  // 2026-07-03) present in the table. Legacy labels with no row are still shown
+  // as "No data yet" so the orchestrator sees the full historical taxonomy.
+  const legacy = ['TREND', 'BIAS', 'NOISE', 'REVERSAL', 'FIRST_SIGNAL'];
+  const patterns = [...legacy, ...Object.keys(patternPerfMap).filter(p => !legacy.includes(p)).sort()];
   const allClosedTrades = patterns.reduce(
     (sum, p) => sum + (Number((patternPerfMap[p] || {}).total_trades) || 0), 0);
   return patterns.map(p => {
@@ -305,6 +310,10 @@ function formatTechnicals(tickers, priceMap) {
       : p.rsi14 < 30 ? `${p.rsi14} (oversold)`
       : `${p.rsi14} (neutral)`;
 
+    const extStr = p.ext_20d_pct != null
+      ? `${p.ext_20d_pct >= 0 ? '+' : ''}${p.ext_20d_pct}% vs 20d MA${p.ext_20d_pct > 5 ? ' ⛔ EXTENDED (long entries blocked in code)' : p.ext_20d_pct < -5 ? ' ⛔ WASHED OUT (short entries blocked in code)' : ''}`
+      : 'N/A';
+
     const sma50Str = p.sma50 != null
       ? `${p.current >= p.sma50 ? '+' : ''}${((p.current - p.sma50) / p.sma50 * 100).toFixed(1)}% ${p.current >= p.sma50 ? 'above' : 'below'}`
       : 'N/A (<50 bars)';
@@ -315,7 +324,7 @@ function formatTechnicals(tickers, priceMap) {
 
     const pct52wStr = p.pct_52w != null ? `${p.pct_52w}th pct` : 'N/A';
 
-    return `  ${ticker}: RSI ${rsiLabel} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr}`;
+    return `  ${ticker}: RSI ${rsiLabel} | 20d MA ${extStr} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr}`;
   }).join('\n');
 }
 
@@ -369,14 +378,14 @@ This means:
 
 ## NET EXPOSURE MANAGEMENT
 
-Net exposure = (long USD − short USD) / portfolio value. Assess market regime from the SPY price history visible in section 3c of the user prompt.
+Net exposure = (long USD − short USD) / portfolio value. The session header gives you a COMPUTED market regime (SPY vs its 20d/50d MAs + sector-ETF breadth) with a net exposure target. Use the computed label — do not re-derive regime from sentiment or news; this fund's deployment timing has been inverted twice by doing exactly that (heavy at tops, full cash through rallies).
 
-Target net exposure by regime:
-- SPY in clear uptrend (last 5 sessions broadly rising): target 60–110% net long. Favor longs; deploy available capital into TREND setups.
-- SPY flat or mixed: target 20–60% net long. Balance longs and shorts; be selective on entries.
-- SPY declining or clearly weakening: target −20% to +30%. Reduce long exposure, expand short book, accept more cash.
+Target net exposure by computed regime:
+- BULL: target 60–110% net long. Being far below this band in a BULL regime is an ACTIVE BET AGAINST THE BENCHMARK and the largest single source of this fund's negative alpha to date. Ramp toward the band using the entry throttle (2/session) with PULLBACK-quality entries; when no candidate passes the extension gate this session, set watchlist triggers at pullback levels so the next session can act. Name in cash_deployment_rationale which specific gate blocked each candidate — "caution" is not a gate.
+- NEUTRAL: target 20–60% net long. Balance longs and shorts; be selective on entries.
+- BEAR: target −20% to +30% net. Reduce long exposure, expand the short book, accept more cash.
 
-These are guidelines, not hard limits. State your regime read and resulting posture explicitly in risk_summary.regime_assessment each session.
+The band is the posture; the gates (confidence floor, extension gate, throttle, sector caps) decide each individual trade. State the computed regime and your resulting posture in risk_summary.regime_assessment each session.
 
 ## INPUTS YOU RECEIVE
 
@@ -496,7 +505,9 @@ These caps are already applied in the number you see. Do not override them based
 **Always use effective_confidence (not raw reported_confidence) when applying sizing rules.**
 
 #### 7b. Pattern Performance — Expected Value by Entry Pattern (pattern_performance table)
-Historical expected value (EV) of closed trades grouped by signal pattern:
+Historical expected value (EV) of closed trades grouped by entry pattern.
+
+Two taxonomies coexist in this table. Legacy labels (TREND/BIAS/NOISE/REVERSAL/FIRST_SIGNAL) classified trades by signal-history persistence and cover trades entered before 2026-07-03 — they proved non-discriminative (one label absorbed ~everything). Trades entered from 2026-07-03 onward are classified by measurable PRICE conditions at entry: PULLBACK (retracement toward the 20d MA within an intact trend — the intended default entry), BREAKOUT (fresh move +2–5% past the 20d MA on ≥1.5x volume), MOMENTUM (same zone, normal volume), COUNTER_TREND (entry against the 50d MA trend), EXTENDED (chasing >5% past the mean), CAPITULATION (entering into a >5% adverse washout). Judge new entries against the new labels as their sample builds; the legacy rows are history, not guidance.
 
 Example:
   TREND       → 68% / +11.2% / -4.8% / +6.1%  ← strong positive EV, proceed normally
@@ -548,7 +559,8 @@ Use news to:
 RSI(14), 50-day and 200-day simple moving averages, and 52-week range percentile for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
 
 Use technicals to:
-- **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier unless the TREND pattern is very strong. For shorts, overbought RSI confirms the setup.
+- **20d MA extension — the entry-timing gate (enforced in code):** a long more than +5% above its 20d MA, or a short more than -5% below it, is chasing an extended move and WILL be blocked at execution regardless of your output. Do not propose these entries — put the ticker on the watchlist with a pullback trigger instead ("enter on retracement toward the 20d MA"). The best long entry in an uptrend is the pullback toward the mean while the trend (50d/200d MA) remains intact; the best short entry is the failed bounce back toward the mean in a downtrend — never the washed-out low. News-driven conviction does not override this: by the time news reaches you, the pop it caused is usually the wrong price.
+- **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier. For shorts, overbought RSI confirms the setup.
 - **RSI < 30 (oversold):** a short entry here is risky — a bounce is likely. For longs, oversold RSI on a BULLISH signal is a high-conviction entry point.
 - **Price above 50d MA:** stock is in a short-term uptrend. Confirms a BULLISH long thesis.
 - **Price below 50d MA:** stock is in a short-term downtrend. Confirms a BEARISH short thesis. A BULLISH signal on a stock below its 50d MA needs stronger conviction — document the divergence.
@@ -556,7 +568,7 @@ Use technicals to:
 - **Price below 200d MA:** long-term downtrend. Shorts are favored; longs require exceptional catalyst.
 - **52w percentile > 90th:** stock is near all-time highs — momentum is strong but risk/reward is compressed for new longs.
 - **52w percentile < 10th:** stock is near 52-week lows — falling knife risk for longs; natural short setup if the thesis is deteriorating.
-- Do not veto a HIGH conviction TREND signal solely on technicals — but document conflicts and apply a size tier reduction if two or more technical factors oppose the trade direction.
+- Timing outranks conviction for ENTRIES: a great thesis at a bad price is a bad trade. When technicals say the move is extended, the correct action is watchlist-with-trigger, not a smaller chase.
 
 ## POSITION SIZING RULES
 
@@ -579,6 +591,7 @@ Use technicals to:
 If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ### Hard portfolio limits (enforced by code — your output is filtered against these)
+- Maximum 2 NEW entries (BUY/SHORT) and $12,000 of new exposure per session — deployment staggers across sessions by design (all-at-once batches have been this fund's single largest loss source; a batch is one correlated macro-timing bet). List your entry actions in priority order: only the first 2 execute. If you have more than 2 valid setups, the rest go on the watchlist with triggers for the NEXT session — you get 3 sessions per day, so a 6-position build-out takes a day, not a minute.
 - Maximum 12 open positions simultaneously (longs + shorts combined)
 - Never issue a BUY for a ticker you already hold a long position in. Never issue a SHORT for a ticker you already hold a short position in. Adding to an existing position is not supported — if the open positions list contains a ticker, it is off-limits for new entries. If you want to flip a long to a short (or vice versa): issue the SELL or COVER this session to close the existing position, and consider opening the opposite side in a future session once the close is confirmed. Never issue a SELL and a SHORT for the same ticker in the same session output, and never issue a COVER and a BUY for the same ticker in the same session output.
 - Per sector limits:
@@ -592,11 +605,17 @@ If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ## EXIT RULES
 
+### Exit discipline — the asymmetry rule (READ FIRST)
+This fund's realized losses have come disproportionately from its own exit activity, not from stops: thesis_flip exits went 0-for-6 (selling local extremes on news noise) and profit_taking exits banked +$21 across 8 trades (cutting winners at +2-3% while stops gave losers 8-20% of room). That is the classic asymmetry INVERTED. The fund's only large winners have been positions left alone for weeks. Therefore:
+- **Minimum hold: 5 trading days.** No judgment-based exit (thesis_flip, profit_taking, position_aging) in a position's first 5 trading days. The trailing stop and the earnings exit are the only exits during this window — the stop is the disaster brake; your judgment gets involved only after the position has had room to work. Exception: a specialist HIGH-conviction direction reversal (2+ sessions) WITH price confirmation may override.
+- **The default action on a winning position with an intact thesis is HOLD.** A position up >10% is not a reason to exit — it is evidence the thesis is working. The trailing stop already protects the downside and rises with the price. Do not bank small gains to feel productive; the fund needs its winners to become big.
+- **A judgment exit must beat the stop.** Before any SELL/COVER, ask: what do I know that the trailing stop doesn't? If the answer is only "the price wiggled" or "one session's signal turned", the stop is the better exit and the answer is HOLD.
+
 ### Direction change assessment
 When a specialist's direction changes from your entry signal, assess whether the thesis remains intact:
-- Long position: specialist flips BULLISH → BEARISH → SELL. Strong evidence of deterioration; act.
+- Long position: specialist flips BULLISH → BEARISH → SELL only when BOTH hold: (a) the flip is confirmed across 2+ consecutive sessions (sessions_in_direction: 2+), AND (b) price confirms the deterioration — the stock has broken below its 20d MA. A one-session flip, or a bearish signal while price still holds its trend, is news noise: the record shows these exits sold local bottoms 6 out of 6 times. Flag it, watch it, do not trade it.
 - Long position: specialist flips BULLISH → NEUTRAL → use judgment. Check sessions_in_direction: if this is the first NEUTRAL session (sessions_in_direction: 1), weigh it against whether news has genuinely changed, stop proximity, and what other specialists say before deciding. A sustained NEUTRAL (sessions_in_direction: 2+) with no recovery warrants a SELL.
-- Short position: apply the inverse logic (BEARISH confirms; BULLISH or sustained NEUTRAL threatens).
+- Short position: apply the inverse logic (BEARISH confirms; BULLISH or sustained NEUTRAL threatens; price confirmation = the stock reclaiming its 20d MA from below).
 
 ### Earnings exit
 If an open position has earnings ≤2 days: lean toward closing before the event. Holding is reasonable if (a) thesis remains intact, (b) analyst consensus strongly expects a beat, (c) position is profitable, AND (d) specialist has HIGH conviction this session. Document your decision either way.
@@ -614,7 +633,7 @@ For SHORT positions, apply this rule with the correct inversion:
 
 ### Profit-taking and give-back protection
 Each open position's listing in section 2 shows "Peak gain" (its best unrealized gain since entry, derived from intraday highs/lows) and "Given back" (how much of that peak has been lost, in percentage points and as a % of the peak). The trailing stop only reacts to price — it has no memory of how much profit a position once had, and the stop band (8-20%) is often wider than a typical give-back. A position can run from +8% to -3% without ever testing its stop. Treat significant give-back as its own sell signal, independent of thesis status and stop proximity — but this is a profit-PROTECTION rule, not a loss-cutting rule, so it only applies while the position is still net profitable:
-- Peak gain ≥5% AND give-back ≥50% of that peak (flagged "← SIGNIFICANT GIVE-BACK" in the position data) AND the position is still net positive (current P&L > 0) AND no fresh TREND/REVERSAL confirmation this session → strong candidate to close now and bank what remains, rather than waiting for the thesis to fully break or the stop to be hit. Use exit_reason: "profit_taking".
+- Peak gain ≥8% AND give-back ≥50% of that peak (flagged "← SIGNIFICANT GIVE-BACK" in the position data) AND the position is still net positive (current P&L > 0) AND no fresh TREND/REVERSAL confirmation this session → strong candidate to close now and bank what remains, rather than waiting for the thesis to fully break or the stop to be hit. Use exit_reason: "profit_taking". (Peaks below 8% are inside normal swing volatility — giving back half of a +4% blip is noise, not a signal; those positions stay governed by the stop.)
 - If the position has already gone net negative (flagged "← NOW NEGATIVE, no profit left to protect" in the position data — give-back has erased the entire peak), do NOT use exit_reason "profit_taking": there is no profit left to bank, so closing it now would just be a loss with worse timing than the stop would give it. Fall through to the standard thesis/stop/aging rules instead — do not force a close purely because the position once had a bigger unrealized gain.
 - If the position is still meaningfully profitable (current P&L comfortably positive) and give-back is moderate (<50% of peak), trimming half and holding the rest is the more conservative response — do not force a full exit on a position that is still working.
 - If a position's peak gain reached >20% at any point, always weigh trimming half and tightening the stop on the remainder while it is still profitable, rather than waiting for a full round-trip.
@@ -790,6 +809,13 @@ const isOpen   = specialists.length > 0;  // market open status comes from orche
 const userPrompt = `## SESSION: ${ctx.session_id} (${ctx.session_type.toUpperCase()})
 SPY: $${ctx.spyCurrent || 'N/A'} | Portfolio: $${account.portfolio_value.toFixed(0)} | Cash: $${account.cash.toFixed(0)} | Buying Power: $${account.buying_power.toFixed(0)}
 Cumulative Return — Portfolio: ${ctx.portfolioCumulativePct}% | SPY: ${ctx.spyCumulativePct}% | Alpha: ${(ctx.portfolioCumulativePct - ctx.spyCumulativePct).toFixed(2)}%
+${(() => {
+  const r = ctx.marketRegime;
+  if (!r) return 'Market Regime (computed): unavailable (no SPY bars this session)';
+  const target = r.label === 'BULL' ? '60–110% net long' : r.label === 'BEAR' ? '−20% to +30% net' : '20–60% net long';
+  const s = v => v == null ? 'N/A' : `${v >= 0 ? '+' : ''}${v}%`;
+  return `Market Regime (computed): ${r.label} — SPY ${s(r.spy_vs_sma20_pct)} vs 20d MA, ${s(r.spy_vs_sma50_pct)} vs 50d MA | Breadth: ${r.breadth_pct_etfs_above_sma20 != null ? r.breadth_pct_etfs_above_sma20 + '% of sector ETFs above their 20d MA' : 'N/A'} | SPY 5d: ${s(r.spy_chg_5d_pct)} → Net exposure target: ${target}`;
+})()}
 
 ---
 

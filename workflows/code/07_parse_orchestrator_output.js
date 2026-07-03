@@ -34,6 +34,34 @@ try {
 const state    = orchInput.portfolio_state;
 const priceMap = state.priceMap;
 
+// ── PRICE-BASED ENTRY TAXONOMY ────────────────────────────────────────────────
+// Classifies every BUY/SHORT by its measurable entry conditions, replacing the
+// signal-history labels (TREND/BIAS/...) as the stored trades.entry_pattern.
+// Those labels measured specialist-opinion persistence over ~1.7 days (5 sessions
+// at 3/day) — near-automatic given the signal-consistency instruction, so TREND
+// absorbed 68% of all trades and pattern-EV feedback learned nothing. These labels
+// measure WHERE in the move the fund entered, which the 2026-07-03 trade audit
+// showed is what actually separated winners from losers. Buckets (direction-aware,
+// ext = % above/below 20d SMA, sign flipped for shorts so + = chasing):
+//   EXTENDED      favorable ext > +5%   — chasing (08's gate blocks these; label covers fallbacks)
+//   CAPITULATION  favorable ext < -5%   — knife-catch long / squeeze-bait short
+//   PULLBACK      favorable ext ≤ +2%, price on the right side of the 50d MA — retracement within a trend
+//   COUNTER_TREND favorable ext ≤ +2%, wrong side of the 50d MA — fighting the larger trend
+//   BREAKOUT      favorable ext +2..5% on ≥1.5x average volume — fresh move with participation
+//   MOMENTUM      favorable ext +2..5% on normal volume — mid-move entry, unconfirmed
+function entryQualityPattern(action, p) {
+  if (!p || p.ext_20d_pct == null) return 'UNCLASSIFIED';
+  const isBuy  = action.action === 'BUY';
+  const dirExt = isBuy ? p.ext_20d_pct : -p.ext_20d_pct;
+  const withTrend = p.sma50 != null
+    ? (isBuy ? p.current >= p.sma50 : p.current <= p.sma50)
+    : true;
+  if (dirExt >  5) return 'EXTENDED';
+  if (dirExt < -5) return 'CAPITULATION';
+  if (dirExt <= 2) return withTrend ? 'PULLBACK' : 'COUNTER_TREND';
+  return (p.adv_ratio != null && p.adv_ratio >= 1.5) ? 'BREAKOUT' : 'MOMENTUM';
+}
+
 const enrichedActions = (parsed.portfolio_actions || []).map(action => {
   const ticker    = action.ticker;
   const price     = priceMap[ticker] ? priceMap[ticker].current : null;
@@ -105,6 +133,11 @@ const enrichedActions = (parsed.portfolio_actions || []).map(action => {
     needs_trailing_stop:  action.action === 'BUY' || action.action === 'SHORT',
     order_payload:        marketOrderPayload,
     trail_stop_payload:   trailStopPayload,
+    // Stored as trades.entry_pattern / position_metadata.signal_history_pattern by
+    // Prepare Position Metadata (which prefers this field over signal_history_pattern).
+    entry_quality_pattern: (action.action === 'BUY' || action.action === 'SHORT')
+      ? entryQualityPattern(action, priceMap[ticker])
+      : null,
   };
 });
 

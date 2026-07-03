@@ -371,18 +371,19 @@ const rotationSummary = NICHES.map(niche => {
 const spyBars = allBars['SPY'] || [];
 const spyCurrent = spyBars.length > 0 ? spyBars[spyBars.length - 1].c : null;
 
-// Use first snapshot as baseline (start of experiment)
+// Baseline = experiment inception (2026-05-28 DB reset: $60,000 @ SPY $750.46).
+// "Load Portfolio Snapshots" returns only the latest 30 rows, so the oldest loaded
+// row is a rolling ~1-week-ago snapshot, NOT inception — once row 31 landed (~06-05)
+// these "cumulative" figures silently became a mislabeled rolling window.
+const BASELINE_PORTFOLIO_USD = 60000;
+const BASELINE_SPY_PRICE = 750.46;
 const sortedSnaps = [...snapshotRows].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-const firstSnap = sortedSnaps[0];
 const portfolioValue = parseFloat(accountRaw.portfolio_value);
-const portfolioCumulativePct = firstSnap
-  ? parseFloat(((portfolioValue - firstSnap.portfolio_value_usd) / firstSnap.portfolio_value_usd * 100).toFixed(2))
-  : 0;
-const spyStartPrice = firstSnap ? firstSnap.spy_price : spyCurrent;
+const portfolioCumulativePct = parseFloat(((portfolioValue - BASELINE_PORTFOLIO_USD) / BASELINE_PORTFOLIO_USD * 100).toFixed(2));
 const prevSnap = sortedSnaps[sortedSnaps.length - 1];
 const prevSpyPrice = prevSnap ? parseFloat(prevSnap.spy_price) : null;
-const spyCumulativePct = (spyStartPrice && spyCurrent)
-  ? parseFloat(((spyCurrent - spyStartPrice) / spyStartPrice * 100).toFixed(2))
+const spyCumulativePct = spyCurrent
+  ? parseFloat(((spyCurrent - BASELINE_SPY_PRICE) / BASELINE_SPY_PRICE * 100).toFixed(2))
   : 0;
 
 const last7Snapshots = [...snapshotRows]

@@ -378,14 +378,14 @@ This means:
 
 ## NET EXPOSURE MANAGEMENT
 
-Net exposure = (long USD − short USD) / portfolio value. Assess market regime from the SPY price history visible in section 3c of the user prompt.
+Net exposure = (long USD − short USD) / portfolio value. The session header gives you a COMPUTED market regime (SPY vs its 20d/50d MAs + sector-ETF breadth) with a net exposure target. Use the computed label — do not re-derive regime from sentiment or news; this fund's deployment timing has been inverted twice by doing exactly that (heavy at tops, full cash through rallies).
 
-Target net exposure by regime:
-- SPY in clear uptrend (last 5 sessions broadly rising): target 60–110% net long. Favor longs; deploy available capital into TREND setups.
-- SPY flat or mixed: target 20–60% net long. Balance longs and shorts; be selective on entries.
-- SPY declining or clearly weakening: target −20% to +30%. Reduce long exposure, expand short book, accept more cash.
+Target net exposure by computed regime:
+- BULL: target 60–110% net long. Being far below this band in a BULL regime is an ACTIVE BET AGAINST THE BENCHMARK and the largest single source of this fund's negative alpha to date. Ramp toward the band using the entry throttle (2/session) with PULLBACK-quality entries; when no candidate passes the extension gate this session, set watchlist triggers at pullback levels so the next session can act. Name in cash_deployment_rationale which specific gate blocked each candidate — "caution" is not a gate.
+- NEUTRAL: target 20–60% net long. Balance longs and shorts; be selective on entries.
+- BEAR: target −20% to +30% net. Reduce long exposure, expand the short book, accept more cash.
 
-These are guidelines, not hard limits. State your regime read and resulting posture explicitly in risk_summary.regime_assessment each session.
+The band is the posture; the gates (confidence floor, extension gate, throttle, sector caps) decide each individual trade. State the computed regime and your resulting posture in risk_summary.regime_assessment each session.
 
 ## INPUTS YOU RECEIVE
 
@@ -809,6 +809,13 @@ const isOpen   = specialists.length > 0;  // market open status comes from orche
 const userPrompt = `## SESSION: ${ctx.session_id} (${ctx.session_type.toUpperCase()})
 SPY: $${ctx.spyCurrent || 'N/A'} | Portfolio: $${account.portfolio_value.toFixed(0)} | Cash: $${account.cash.toFixed(0)} | Buying Power: $${account.buying_power.toFixed(0)}
 Cumulative Return — Portfolio: ${ctx.portfolioCumulativePct}% | SPY: ${ctx.spyCumulativePct}% | Alpha: ${(ctx.portfolioCumulativePct - ctx.spyCumulativePct).toFixed(2)}%
+${(() => {
+  const r = ctx.marketRegime;
+  if (!r) return 'Market Regime (computed): unavailable (no SPY bars this session)';
+  const target = r.label === 'BULL' ? '60–110% net long' : r.label === 'BEAR' ? '−20% to +30% net' : '20–60% net long';
+  const s = v => v == null ? 'N/A' : `${v >= 0 ? '+' : ''}${v}%`;
+  return `Market Regime (computed): ${r.label} — SPY ${s(r.spy_vs_sma20_pct)} vs 20d MA, ${s(r.spy_vs_sma50_pct)} vs 50d MA | Breadth: ${r.breadth_pct_etfs_above_sma20 != null ? r.breadth_pct_etfs_above_sma20 + '% of sector ETFs above their 20d MA' : 'N/A'} | SPY 5d: ${s(r.spy_chg_5d_pct)} → Net exposure target: ${target}`;
+})()}
 
 ---
 

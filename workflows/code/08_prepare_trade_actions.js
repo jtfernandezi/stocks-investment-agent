@@ -35,6 +35,13 @@ const MAX_SHORT_USD  = 12000;
 // chasing; the right entry is the pullback toward the mean, which a later session
 // will offer or not.
 const MAX_ENTRY_EXTENSION_PCT = 5;
+// Entry throttle: 23 of the first 25 trades were opened on just 3 single days
+// (05-28 ×4, 06-08 ×9, 06-22 ×9) — each batch one correlated macro-timing bet;
+// the 06-22 batch top-ticked the market and lost $1,121 as a unit. Capping new
+// entries per session forces deployment to stagger across sessions/days, which
+// dollar-cost-averages the macro timing the system has repeatedly gotten wrong.
+const MAX_NEW_ENTRIES_PER_SESSION = 2;
+const MAX_NEW_EXPOSURE_PER_SESSION_USD = 12000;
 // Per sector: max 2 longs (1st free; 2nd requires TREND + ≤$5k) + 1 short
 
 const priceMapForGate = $("Compute Derived Metrics").first().json.priceMap || {};
@@ -101,9 +108,22 @@ for (const p of currentPositions) {
 
 // Cash guard + hard limits: filter each action
 let remainingCash = parseFloat(orch.account?.cash || 0);
+let newEntriesThisSession = 0;
+let newExposureThisSession = 0;
 const filteredActions = actions.filter(action => {
   // SELL/COVER always pass — they reduce exposure
   if (action.action === 'SELL' || action.action === 'COVER') return true;
+
+  // Entry throttle — max N new positions and $ exposure per session. The
+  // orchestrator lists actions in its own priority order, so the first ones win.
+  if (newEntriesThisSession >= MAX_NEW_ENTRIES_PER_SESSION) {
+    console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: session entry throttle reached (max ${MAX_NEW_ENTRIES_PER_SESSION} new entries/session — stagger deployment across sessions)`);
+    return false;
+  }
+  if (newExposureThisSession + (action.size_usd || 0) > MAX_NEW_EXPOSURE_PER_SESSION_USD) {
+    console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: session new-exposure cap ($${newExposureThisSession + (action.size_usd || 0)} > $${MAX_NEW_EXPOSURE_PER_SESSION_USD})`);
+    return false;
+  }
 
   const isBuy   = action.action === 'BUY';
   const isShort = action.action === 'SHORT';
@@ -180,6 +200,8 @@ const filteredActions = actions.filter(action => {
 
   // Action passes — update running counters
   remainingCash -= cost;
+  newEntriesThisSession++;
+  newExposureThisSession += cost;
   openCount++;
   if (!nicheExposure[niche]) nicheExposure[niche] = { long: 0, short: 0 };
   nicheExposure[niche][side]++;

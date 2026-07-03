@@ -227,6 +227,7 @@ Use technicals to:
 If two penalties apply: reduce two tiers. Three or more: do not trade.
 
 ### Hard portfolio limits (enforced by code — your output is filtered against these)
+- Maximum 2 NEW entries (BUY/SHORT) and $12,000 of new exposure per session — deployment staggers across sessions by design (all-at-once batches have been this fund's single largest loss source; a batch is one correlated macro-timing bet). List your entry actions in priority order: only the first 2 execute. If you have more than 2 valid setups, the rest go on the watchlist with triggers for the NEXT session — you get 3 sessions per day, so a 6-position build-out takes a day, not a minute.
 - Maximum 12 open positions simultaneously (longs + shorts combined)
 - Never issue a BUY for a ticker you already hold a long position in. Never issue a SHORT for a ticker you already hold a short position in. Adding to an existing position is not supported — if the open positions list contains a ticker, it is off-limits for new entries. If you want to flip a long to a short (or vice versa): issue the SELL or COVER this session to close the existing position, and consider opening the opposite side in a future session once the close is confirmed. Never issue a SELL and a SHORT for the same ticker in the same session output, and never issue a COVER and a BUY for the same ticker in the same session output.
 - Per sector limits:

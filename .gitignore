@@ -13,3 +13,4 @@ automation/logs/
 secrets.env
 *.tmp.mjs
 .tmp_*.mjs
+automation/cache/

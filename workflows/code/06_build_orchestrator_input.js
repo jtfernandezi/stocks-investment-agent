@@ -135,7 +135,12 @@ function formatPatternPerf(patternPerfMap) {
   // as "No data yet" so the orchestrator sees the full historical taxonomy.
   const legacy = ['TREND', 'BIAS', 'NOISE', 'REVERSAL', 'FIRST_SIGNAL'];
   const patterns = [...legacy, ...Object.keys(patternPerfMap).filter(p => !legacy.includes(p)).sort()];
-  const allClosedTrades = patterns.reduce(
+  // Dominance share is computed within the ACTIVE (price-based) record only: legacy
+  // rows are frozen (no new trade can ever land in them since the 2026-07-03 taxonomy
+  // switch), so counting them in the denominator would let a young catch-all price
+  // label escape the dominant-pattern guard and replay the fund-wide-veto deadlock
+  // inside the new taxonomy's early life.
+  const activeClosedTrades = patterns.filter(p => !legacy.includes(p)).reduce(
     (sum, p) => sum + (Number((patternPerfMap[p] || {}).total_trades) || 0), 0);
   return patterns.map(p => {
     const data = patternPerfMap[p] || {};
@@ -155,18 +160,28 @@ function formatPatternPerf(patternPerfMap) {
     // into cash through a +3pp SPY rally (2026-06-17 audit). Honor the documented floor:
     // below 5 trades, surface the data but flag it as unreliable instead of actionable.
     let flag = '';
-    if (trades >= 5) {
-      // Dominant-pattern guard: when one pattern holds most of the closed-trade record
-      // (TREND was 17 of 25 = 68% on 2026-07-03), its EV is statistically the fund's
-      // OVERALL record, not pattern-specific edge — and since nearly every new entry
-      // gets the same label, "DO NOT TRADE" on it acts as a fund-wide entry veto
-      // (the 98%-cash deadlock of 2026-06-24→07-02). Surface the EV honestly but
-      // strip the categorical veto; §7b's dominant-pattern rule tells the
-      // orchestrator to judge setups individually and use sizing, not refusal.
-      const share = allClosedTrades > 0 ? trades / allClosedTrades : 0;
+    if (legacy.includes(p)) {
+      // Legacy signal-persistence rows are FROZEN: since the 2026-07-03 taxonomy switch
+      // every new trade stores a price-based label, so these rows can never gain another
+      // sample and their EV can never update. A frozen negative-EV row must not gate live
+      // entries forever — the orchestrator still *proposes* in legacy terms (TREND/BIAS),
+      // so the moment TREND's share decayed below the 60% dominance threshold (one
+      // non-TREND close: 15/26 = 57.7%) the fund-wide "DO NOT TRADE" veto would return
+      // permanently, replaying the 06-24→07-02 98%-cash deadlock. §7b's own prose already
+      // says "the legacy rows are history, not guidance" — make the rendered flag agree.
+      flag = ' ← LEGACY LABEL (taxonomy frozen 2026-07-03) — historical context only, NOT an entry gate; judge new entries by the price-based labels per §7b';
+    } else if (trades >= 5) {
+      // Dominant-pattern guard: when one pattern holds most of the active closed-trade
+      // record (TREND was 17 of 25 = 68% on 2026-07-03, pre-freeze), its EV is
+      // statistically the fund's OVERALL record, not pattern-specific edge — and since
+      // nearly every new entry gets the same label, "DO NOT TRADE" on it acts as a
+      // fund-wide entry veto (the 98%-cash deadlock of 2026-06-24→07-02). Surface the
+      // EV honestly but strip the categorical veto; §7b's dominant-pattern rule tells
+      // the orchestrator to judge setups individually and use sizing, not refusal.
+      const share = activeClosedTrades > 0 ? trades / activeClosedTrades : 0;
       if (ev_num != null && ev_num < 0) {
         flag = share >= 0.6
-          ? ` ← DOMINANT PATTERN (${(share * 100).toFixed(0)}% of all closed trades) — EV mirrors the fund's overall record, NOT pattern-specific edge; not a blanket veto on new entries, see §7b dominant-pattern rule`
+          ? ` ← DOMINANT PATTERN (${(share * 100).toFixed(0)}% of active closed trades) — EV mirrors the fund's overall record, NOT pattern-specific edge; not a blanket veto on new entries, see §7b dominant-pattern rule`
           : ' ← NEGATIVE EV — DO NOT TRADE';
       }
       else if (ev_num != null && ev_num < 1.0 && ev_num >= 0)      flag = ' ← LOW EV — apply noise penalty';
@@ -516,9 +531,9 @@ Example:
   REVERSAL    → 61% / +9.4% / -5.5% / +4.1%   ← positive EV, valid entry
   FIRST_SIGNAL→ 44% / +7.1% / -6.8% / +0.1%   ← near-zero EV, require confirmation
 
-Rules (apply ONLY to patterns with ≥5 closed trades — below that the EV is statistical noise):
-- Negative EV pattern with ≥5 trades → do NOT open new positions, regardless of signal quality — UNLESS it is flagged as a dominant pattern (next rule).
-- Dominant-pattern exception: when a single pattern accounts for ≥60% of ALL closed trades (it will be flagged "DOMINANT PATTERN" in the table), its EV is statistically indistinguishable from the fund's overall track record and carries no pattern-specific information — there is no alternative pattern to rotate into, because nearly every entry receives the same label. Do NOT use its negative EV as a blanket veto on all new entries. Judge each setup on its own merits (signal quality, conviction, regime, risk rules) and express the caution it warrants through SIZING (reduce one tier), tighter stops, or selectivity — not by refusing every entry. Sitting ~100% in cash because the catch-all pattern label shows negative EV is itself an uncompensated active bet against the mandate to beat SPY.
+Rules (apply ONLY to PRICE-BASED patterns with ≥5 closed trades — below that the EV is statistical noise; rows flagged "LEGACY LABEL" are frozen history that can never accumulate another trade and must NEVER gate, veto, or penalize a new entry):
+- Negative EV price-based pattern with ≥5 trades → do NOT open new positions, regardless of signal quality — UNLESS it is flagged as a dominant pattern (next rule).
+- Dominant-pattern exception: when a single price-based pattern accounts for ≥60% of the active (price-based) closed trades (it will be flagged "DOMINANT PATTERN" in the table), its EV is statistically indistinguishable from the fund's overall track record and carries no pattern-specific information — there is no alternative pattern to rotate into, because nearly every entry receives the same label. Do NOT use its negative EV as a blanket veto on all new entries. Judge each setup on its own merits (signal quality, conviction, regime, risk rules) and express the caution it warrants through SIZING (reduce one tier), tighter stops, or selectivity — not by refusing every entry. Sitting ~100% in cash because the catch-all pattern label shows negative EV is itself an uncompensated active bet against the mandate to beat SPY.
 - EV < 1.0% with ≥5 trades → apply noise penalty (reduce one tier).
 - EV > 5.0% with win_rate > 60% and ≥5 trades → validated edge, prioritize over other entries.
 - Fewer than 5 trades for a pattern → EV is unreliable; IGNORE it and apply standard conviction rules. Never block a trade on a negative EV derived from fewer than 5 trades — early in the experiment this would freeze the book.

@@ -27,6 +27,7 @@ The inviolable rule is **never auto-merged / never deployed** — *not* "never c
 - `canary.mjs` — daily check
 - `weekly_audit_prompt.md` — Sunday audit instructions (Claude reads and follows this)
 - `sync_n8n.mjs` — pushes merged `workflows/code/*.js` into the live n8n nodes (dry-run by default)
+- `backtest.mjs` — backtest harness v0: replays the Phase-1 entry taxonomy (07), the ±5% extension gate (08), and the computed market regime (02) against historical daily bars (Alpaca GET only; caches to `cache/`, gitignored). `node automation/backtest.mjs [--refresh|--json]`. Signal analysis, not portfolio simulation — read its printed caveats.
 
 **Helpers** — small tools the brains call
 - `query.mjs` — talks to the database (read-only)

@@ -13,7 +13,17 @@ let rawText  = '';
 try {
   rawText = rawResponse.output?.[0]?.content?.[0]?.text;  // native OpenAI node v2.1 output
   const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-  parsed = JSON.parse(cleaned);
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (strictErr) {
+    // GPT-5.1 occasionally emits an invalid escape inside a JSON string (e.g. "\$28k"
+    // in the 2026-07-10 watchdog run) — one bad character otherwise discards the whole
+    // session's actions via the fallback below. Walk escapes left-to-right: a valid
+    // escape pair is kept as-is, a lone backslash (which can never occur in valid JSON)
+    // is dropped. Consuming valid pairs first means an escaped backslash followed by a
+    // letter ("\\s") is never mangled, so strictly-valid output is unchanged.
+    parsed = JSON.parse(cleaned.replace(/\\(["\\/bfnrtu])|\\/g, (m, esc) => esc ? m : ''));
+  }
 } catch (err) {
   // Fallback: empty decisions, nothing trades
   parsed = {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ALL_NICHES, NICHE_DISPLAY } from '@/lib/constants';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -82,6 +82,13 @@ export default function SignalHeatmap() {
   const [sessions, setSessions] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading,  setLoading]  = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Start scrolled to the newest sessions (right edge); scroll left for history
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [sessions]);
 
   useEffect(() => {
     fetch('/api/signals/history')
@@ -140,8 +147,14 @@ export default function SignalHeatmap() {
     );
   }
 
-  const CELL = 40;
-  const GAP  = 5;
+  const CELL    = 20;
+  const GAP     = 3;
+  const LABEL_W = 148;
+  // Sticky first-column cells are widened by GAP so the column gap can't
+  // show scrolling cells bleeding through underneath the labels.
+  // Sticky must live inside flex rows (not a grid) — a grid item's sticky
+  // containing block is its own grid area, so it can never follow the scroll.
+  const stickyStyle: React.CSSProperties = { position: 'sticky', left: 0, zIndex: 10, width: LABEL_W + GAP, flexShrink: 0 };
 
   return (
     <div className="space-y-6">
@@ -174,91 +187,92 @@ export default function SignalHeatmap() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `148px repeat(${sessions.length}, ${CELL}px)`,
-              rowGap: GAP,
-              columnGap: GAP,
-            }}
-          >
+        <div className="overflow-x-auto" ref={scrollRef}>
+          <div className="w-max flex flex-col" style={{ rowGap: GAP }}>
+
             {/* ── Header: date groups row ── */}
-            <div className="flex items-end pb-1">
-              <span className="text-[10px] text-dim/50 uppercase tracking-wider">Sector</span>
-            </div>
-            {dateGroups.map(g => (
-              <div
-                key={g.dateKey}
-                className="flex items-end justify-start pb-1"
-                style={{
-                  gridColumn: `span ${g.count}`,
-                  paddingLeft: 2,
-                }}
-              >
-                <span className="text-[10px] text-dim font-medium whitespace-nowrap">{g.dateShort}</span>
+            <div className="flex" style={{ columnGap: GAP }}>
+              <div className="flex items-end pb-1 bg-panel" style={stickyStyle}>
+                <span className="text-[10px] text-dim/50 uppercase tracking-wider">Sector</span>
               </div>
-            ))}
+              {dateGroups.map(g => (
+                <div
+                  key={g.dateKey}
+                  className="flex items-end justify-start pb-1 shrink-0 overflow-hidden"
+                  style={{ width: g.count * CELL + (g.count - 1) * GAP, paddingLeft: 2 }}
+                  title={g.dateShort}
+                >
+                  {g.count >= 2 && (
+                    <span className="text-[10px] text-dim font-medium whitespace-nowrap">{g.dateShort}</span>
+                  )}
+                </div>
+              ))}
+            </div>
 
             {/* ── Sub-header: AM / PM / EOD ── */}
-            <div />
-            {sessions.map(sess => {
-              const { label } = parseSession(sess);
-              const isSelected = sess === selected;
-              return (
-                <div
-                  key={`sub-${sess}`}
-                  onClick={() => setSelected(sess)}
-                  className={`flex items-center justify-center cursor-pointer select-none transition-colors text-[10px] font-medium pb-1 border-b ${
-                    isSelected
-                      ? 'text-accent border-accent'
-                      : 'text-dim/60 border-transparent hover:text-dim'
-                  }`}
-                >
-                  {label}
-                </div>
-              );
-            })}
-
-            {/* ── Data rows ── */}
-            {ALL_NICHES.flatMap(niche => [
-              <div
-                key={`lbl-${niche}`}
-                className="flex items-center pr-2"
-                style={{ height: CELL }}
-              >
-                <span className="text-xs text-dim whitespace-nowrap truncate">
-                  {shortNiche(NICHE_DISPLAY[niche] ?? niche)}
-                </span>
-              </div>,
-
-              ...sessions.map(sess => {
-                const sig        = lookup.get(sess)?.get(niche);
+            <div className="flex" style={{ columnGap: GAP }}>
+              <div className="bg-panel" style={stickyStyle} />
+              {sessions.map(sess => {
+                const { label } = parseSession(sess);
                 const isSelected = sess === selected;
                 return (
                   <div
-                    key={`${niche}-${sess}`}
+                    key={`sub-${sess}`}
                     onClick={() => setSelected(sess)}
-                    style={{
-                      height: CELL,
-                      width:  CELL,
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      outline: isSelected ? '2px solid rgba(255,255,255,0.2)' : 'none',
-                      outlineOffset: 1,
-                      ...(sig
-                        ? cellBg(sig.direction, norm(sig.confidence))
-                        : { backgroundColor: 'rgba(255,255,255,0.05)' }),
-                    }}
-                    className="transition-all hover:opacity-80 hover:scale-105"
-                    title={sig
-                      ? `${sig.nicheDisplay} · ${sig.direction} · ${sig.conviction} · ${sig.confidence.toFixed(2)}`
-                      : `${NICHE_DISPLAY[niche] ?? niche} · no data`
-                    }
-                  />
+                    style={{ width: CELL, flexShrink: 0 }}
+                    className={`flex items-center justify-center cursor-pointer select-none transition-colors text-[9px] font-medium pb-1 border-b ${
+                      isSelected
+                        ? 'text-accent border-accent'
+                        : 'text-dim/60 border-transparent hover:text-dim'
+                    }`}
+                  >
+                    {label}
+                  </div>
                 );
-              }),
-            ])}
+              })}
+            </div>
+
+            {/* ── Data rows ── */}
+            {ALL_NICHES.map(niche => (
+              <div key={niche} className="flex" style={{ columnGap: GAP }}>
+                <div
+                  className="flex items-center pr-2 bg-panel"
+                  style={{ height: CELL, ...stickyStyle }}
+                >
+                  <span className="text-xs text-dim whitespace-nowrap truncate">
+                    {shortNiche(NICHE_DISPLAY[niche] ?? niche)}
+                  </span>
+                </div>
+
+                {sessions.map(sess => {
+                  const sig        = lookup.get(sess)?.get(niche);
+                  const isSelected = sess === selected;
+                  return (
+                    <div
+                      key={`${niche}-${sess}`}
+                      onClick={() => setSelected(sess)}
+                      style={{
+                        height: CELL,
+                        width:  CELL,
+                        flexShrink: 0,
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        outline: isSelected ? '2px solid rgba(255,255,255,0.2)' : 'none',
+                        outlineOffset: 1,
+                        ...(sig
+                          ? cellBg(sig.direction, norm(sig.confidence))
+                          : { backgroundColor: 'rgba(255,255,255,0.05)' }),
+                      }}
+                      className="transition-all hover:opacity-80 hover:scale-105"
+                      title={sig
+                        ? `${sig.nicheDisplay} · ${sig.direction} · ${sig.conviction} · ${sig.confidence.toFixed(2)}`
+                        : `${NICHE_DISPLAY[niche] ?? niche} · no data`
+                      }
+                    />
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
       </div>

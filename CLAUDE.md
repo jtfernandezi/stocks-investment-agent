@@ -418,7 +418,7 @@ Verification: none of this is backtested (no harness yet — the thresholds ±5%
 
 ## Known Open Issues
 
-- **`Wait For Fill` (5s) is too short for slow-fill batches.** Batch of 6 simultaneous market orders at 09:32 ET on 06-22 filled over 1–7 minutes; the 5s wait expired before fills completed → trailing stops rejected. Prevention `[B-spec]` (see Enhancements 2026-06-28). Midday/close sessions unaffected (single or fast-fill orders). *(VRT and C were the affected positions — C closed 2026-06-29; VRT trailing stop manually attached 2026-06-30 via Alpaca API at 8% GTC.)*
+- **`Wait For Fill` is too short for slow-fill batches — RECURRED 2026-07-09/10.** Batch of 6 simultaneous market orders at 09:32 ET on 06-22 filled over 1–7 minutes; the wait expired before fills completed → trailing stops rejected. Prevention `[B-spec]` (see Enhancements 2026-06-28). Midday/close sessions unaffected (single or fast-fill orders). *(VRT and C were the affected positions — C closed 2026-06-29; VRT trailing stop manually attached 2026-06-30 via Alpaca API at 8% GTC.)* **2026-07-13:** recurred exactly as predicted — NOC/NXPI (bought 07-09, fills 43s/85s) and PLTR (bought 07-10, fill 2m41s) opened with no trailing stops; canary alarmed daily until 11% GTC stops were manually attached 2026-07-13 via Alpaca API (coverage verified 8/8). Also found the live `Wait For Fill` node's parameters are **empty** — it runs the n8n default of **1 second**, not the documented 5s. Prevention (Backlog #12): Watchdog stop-reconciliation branch (preferred, self-healing) + bump `Wait For Fill` to ~60s (partial — would not have saved NXPI/PLTR).
 
 ## position_metadata notes
 

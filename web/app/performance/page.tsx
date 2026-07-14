@@ -598,7 +598,7 @@ export default function PerformancePage() {
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={snapshots} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
               <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false}
-                interval={0} />
+                interval={Math.max(1, Math.floor(snapshots.length / 8))} />
               <YAxis tick={{ fill: '#9CA3AF', fontSize: 11 }} tickLine={false} axisLine={false}
                 tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} width={44} domain={['auto', 'auto']} />
               <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle}

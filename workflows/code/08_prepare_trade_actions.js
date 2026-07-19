@@ -42,6 +42,13 @@ const MAX_ENTRY_EXTENSION_PCT = 5;
 // dollar-cost-averages the macro timing the system has repeatedly gotten wrong.
 const MAX_NEW_ENTRIES_PER_SESSION = 2;
 const MAX_NEW_EXPOSURE_PER_SESSION_USD = 12000;
+// Stale-price guard: refuse to OPEN a position priced off an out-of-date bar
+// series. Alpaca's multi-symbol bars `limit` is a total across the request, so
+// when the fixed start date outgrows it the alphabetically-last ticker silently
+// gets a series ending months back (2026-07: VST was sized and recorded at its
+// July-2025 price, 38% off the real fill; XOM deployed $6.6k of a $5k intent).
+// 5 calendar days tolerates a weekend + one holiday around a fresh bar.
+const MAX_BAR_AGE_DAYS = 5;
 // Per sector: max 2 longs (1st free; 2nd requires TREND + ≤$5k) + 1 short
 
 const priceMapForGate = $("Compute Derived Metrics").first().json.priceMap || {};
@@ -134,6 +141,17 @@ const filteredActions = actions.filter(action => {
   // 0. Already-open guard — block duplicate BUY/SHORT for a ticker already held
   if (openTickers.has(action.ticker)) {
     console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: position already open`);
+    return false;
+  }
+
+  // 0a. Stale-price guard — unlike the extension gate below, this fails CLOSED
+  // when bars exist but are old: a wrong price corrupts the share count, the
+  // trailing stop, the recorded entry price and every feedback table downstream.
+  // (Still fail-open when the ticker has no bars at all — that stays the
+  // extension gate's documented no-data behavior.)
+  const pmEntry = priceMapForGate[action.ticker];
+  if (pmEntry && pmEntry.stale_days != null && pmEntry.stale_days > MAX_BAR_AGE_DAYS) {
+    console.log(`[LIMIT] Skipping ${action.action} ${action.ticker}: price data is stale (last bar ${pmEntry.last_bar_date}, ${pmEntry.stale_days}d old — bars fetch truncated, raise the Fetch Bars node limit)`);
     return false;
   }
 

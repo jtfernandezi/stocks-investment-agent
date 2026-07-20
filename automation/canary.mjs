@@ -232,6 +232,130 @@ async function isTradingDay(today) {
     }
   } catch (e) { issues.push(`Could not reconcile DB open trades vs Alpaca positions: ${e.message}`); }
 
+  // ── CHECK: bars feed freshness (limit-exhaustion truncation class) ──────────
+  // Alpaca's multi-symbol bars endpoint applies `limit` as a TOTAL across all
+  // symbols in the request, filling alphabetically. The live fetch nodes use a
+  // FIXED start=2025-01-01, so the bars-per-symbol requirement grows every
+  // trading day while the limit stays constant — once it is exhausted, the
+  // alphabetically-last ticker(s) silently receive a truncated series ending
+  // months in the past. Found 2026-07-19: limit=3600 was outgrown ~2026-06-06;
+  // VST/XOM/WFC (last in their niches) were served July-2025 prices for a month,
+  // corrupting trade sizing, entry records and P&L by ~30%. This check replays
+  // the EXACT live requests (same symbols, same limit, same start) and alarms on
+  // any symbol whose newest bar is older than BAR_STALE_DAYS. It will keep
+  // alarming until the n8n fetch nodes' limits are raised (or start made rolling).
+  try {
+    const BAR_STALE_DAYS = 5; // calendar days — tolerates weekends + one holiday
+    const BAR_GROUPS = [ // mirror of the live n8n fetch nodes (symbols + limit)
+      { node: 'Cybersecurity', limit: 3600, symbols: 'CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,CHKP,QLYS,TENB' },
+      { node: 'Defense',       limit: 3600, symbols: 'LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON' },
+      { node: 'Nuclear',       limit: 3600, symbols: 'CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE' },
+      { node: 'Copper',        limit: 3600, symbols: 'FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC' },
+      { node: 'AI Semis',      limit: 3600, symbols: 'ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS' },
+      { node: 'Cloud',         limit: 3600, symbols: 'ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB' },
+      { node: 'Oil Gas',       limit: 3600, symbols: 'XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG' },
+      { node: 'Data Centers',  limit: 3600, symbols: 'EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC' },
+      { node: 'Healthcare',    limit: 3600, symbols: 'UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO' },
+      { node: 'Financials',    limit: 3600, symbols: 'JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF' },
+      { node: 'SPY',           limit: 4400, symbols: 'SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF' },
+    ];
+    const dataHeaders = {
+      'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
+      'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+    };
+    const staleReports = [];
+    for (const g of BAR_GROUPS) {
+      const url = `https://data.alpaca.markets/v2/stocks/bars?symbols=${g.symbols}`
+        + `&timeframe=1Day&start=2025-01-01&limit=${g.limit}`;
+      const r = await fetch(url, { headers: dataHeaders });
+      if (!r.ok) { staleReports.push(`${g.node}: fetch failed (HTTP ${r.status})`); continue; }
+      const body = await r.json();
+      const bars = body?.bars || {};
+      for (const sym of g.symbols.split(',')) {
+        const series = bars[sym];
+        if (!Array.isArray(series) || series.length === 0) {
+          staleReports.push(`${g.node}: ${sym} returned NO bars`);
+          continue;
+        }
+        const lastT = new Date(series[series.length - 1].t).getTime();
+        const ageDays = (Date.now() - lastT) / 86400000;
+        if (ageDays > BAR_STALE_DAYS) {
+          staleReports.push(`${g.node}: ${sym} newest bar is ${new Date(lastT).toISOString().slice(0, 10)} (${ageDays.toFixed(0)}d old, ${series.length} bars — limit=${g.limit} exhausted)`);
+        }
+      }
+    }
+    if (staleReports.length) {
+      issues.push(`STALE PRICE BARS — the live bars fetch is serving out-of-date series (limit-exhaustion truncation; trades get sized/priced/recorded off old prices): ${staleReports.join('; ')}. Fix: raise the affected Fetch Bars node's limit (e.g. 10000) in n8n.`);
+    }
+  } catch (e) { issues.push(`Could not verify bars freshness: ${e.message}`); }
+
+  // ── CHECK: trades rows reconcile with actual Alpaca fills ───────────────────
+  // Two silent-corruption modes found 2026-07-19: (1) `trades` entry/exit prices
+  // come from the bars-derived priceMap, so a stale series records a price far
+  // from the real fill (VST recorded at $210.40 vs $152.13 filled → fake −29%
+  // P&L fed to every feedback table); (2) a real executed round trip can be
+  // entirely absent from `trades` (DELL 2026-07-08: buy+sell filled, no row —
+  // invisible to the open-position reconciliation above because nothing stays
+  // open). Both are only visible against the broker's fill history, so compare
+  // the last 7 days of filled orders to `trades` directly.
+  try {
+    const base = process.env.ALPACA_BASE_URL || 'https://paper-api.alpaca.markets/v2';
+    const hdrs = {
+      'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
+      'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+    };
+    const since = new Date(Date.now() - 7 * 86400000).toISOString();
+    const r = await fetch(`${base}/orders?status=closed&after=${since}&limit=500&direction=desc`, { headers: hdrs });
+    const orders = await r.json();
+    if (!Array.isArray(orders)) {
+      issues.push(`Could not reconcile trades vs fills — unexpected /orders response: ${JSON.stringify(orders).slice(0, 200)}`);
+    } else {
+      const PRICE_TOL = 0.05; // >5% recorded-vs-fill divergence = corruption, not overnight-gap noise
+      const fills = orders.filter(o => o.filled_at && o.filled_avg_price);
+      const fillsBySymDate = {};
+      for (const o of fills) {
+        const key = `${o.symbol}|${o.filled_at.slice(0, 10)}`;
+        (fillsBySymDate[key] = fillsBySymDate[key] || []).push(parseFloat(o.filled_avg_price));
+      }
+      const tradeRows = await sql`
+        SELECT ticker, status, entry_date, entry_price, exit_date, exit_price
+        FROM stocks.trades
+        WHERE entry_date >= now() - interval '8 days'
+           OR exit_date  >= now() - interval '8 days'
+           OR status = 'OPEN'`;
+      const day = d => d ? new Date(d).toISOString().slice(0, 10) : null;
+      const mismatches = [];
+      for (const row of tradeRows) {
+        for (const [dateField, priceField] of [['entry_date', 'entry_price'], ['exit_date', 'exit_price']]) {
+          const d = day(row[dateField]);
+          const recorded = row[priceField] != null ? parseFloat(row[priceField]) : null;
+          if (!d || recorded == null) continue;
+          const dayFills = fillsBySymDate[`${row.ticker}|${d}`];
+          if (!dayFills || !dayFills.length) continue; // fills aged out of the 7d window — nothing to compare
+          const closest = dayFills.reduce((a, b) => Math.abs(b - recorded) < Math.abs(a - recorded) ? b : a);
+          if (Math.abs(closest - recorded) / closest > PRICE_TOL) {
+            mismatches.push(`${row.ticker} ${dateField.replace('_date', '')} recorded $${recorded} vs filled $${closest} on ${d}`);
+          }
+        }
+      }
+      if (mismatches.length) {
+        issues.push(`Trades↔fills PRICE MISMATCH (>${PRICE_TOL * 100}%) — recorded prices diverge from actual Alpaca fills (stale-bars pricing corrupts P&L + every feedback table): ${mismatches.join('; ')}. Correct the trades row(s) from the real fills.`);
+      }
+      // (2) every symbol with a fill must map to a trades row (entry/exit in
+      // window, or still OPEN) — otherwise an executed trade never got recorded.
+      const windowStart = new Date(Date.now() - 8 * 86400000).toISOString().slice(0, 10);
+      const coveredSymbols = new Set();
+      for (const row of tradeRows) {
+        const e = day(row.entry_date), x = day(row.exit_date);
+        if (row.status === 'OPEN' || (e && e >= windowStart) || (x && x >= windowStart)) coveredSymbols.add(row.ticker);
+      }
+      const unrecorded = [...new Set(fills.map(o => o.symbol))].filter(s => !coveredSymbols.has(s));
+      if (unrecorded.length) {
+        issues.push(`Executed fill(s) with NO trades row: ${unrecorded.join(', ')} — a real trade ran at the broker but was never recorded (DELL 2026-07-08 class; Store Open Trade / post-mortem write failed). Reconstruct the row from Alpaca order history.`);
+      }
+    }
+  } catch (e) { issues.push(`Could not reconcile trades vs Alpaca fills: ${e.message}`); }
+
   // ── REPORT ──────────────────────────────────────────────────────────────────
   if (issues.length === 0) {
     console.log(`[canary] ✅ all green (${stamp}) — silent.`);

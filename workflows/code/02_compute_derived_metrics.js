@@ -131,8 +131,21 @@ for (const [ticker, bars] of Object.entries(allBars)) {
     ? parseFloat(((current - w52low) / (w52high - w52low) * 100).toFixed(1))
     : null;
 
+  // Bar freshness — Alpaca's multi-symbol bars `limit` is a TOTAL across the
+  // request; once the fixed start=2025-01-01 window outgrows it, the
+  // alphabetically-last ticker(s) silently get a truncated series ending months
+  // in the past (2026-07: VST/XOM/WFC were served July-2025 prices, so entries
+  // were sized, recorded and gated ~30% off the real fill). Stamp the series
+  // age here so 08 can refuse to open positions on stale data.
+  const lastBarMs = new Date(sorted[sorted.length - 1].t).getTime();
+  const staleDays = Number.isFinite(lastBarMs)
+    ? Math.floor((Date.now() - lastBarMs) / 86400000)
+    : null;
+
   priceMap[ticker] = {
     current:        parseFloat(current.toFixed(2)),
+    last_bar_date:  Number.isFinite(lastBarMs) ? new Date(lastBarMs).toISOString().slice(0, 10) : null,
+    stale_days:     staleDays,
     chg_1d_pct:     parseFloat(((current - prev1d)  / prev1d  * 100).toFixed(2)),
     chg_5d_pct:     parseFloat(((current - prev5d)  / prev5d  * 100).toFixed(2)),
     chg_30d_pct:    parseFloat(((current - prev30d) / prev30d * 100).toFixed(2)),

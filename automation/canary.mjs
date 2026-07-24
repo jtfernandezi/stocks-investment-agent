@@ -244,20 +244,26 @@ async function isTradingDay(today) {
   // the EXACT live requests (same symbols, same limit, same start) and alarms on
   // any symbol whose newest bar is older than BAR_STALE_DAYS. It will keep
   // alarming until the n8n fetch nodes' limits are raised (or start made rolling).
+  // Updated 2026-07-24: live n8n nodes were bumped to limit=10000 on 2026-07-21
+  // (operator fix for the 07-19 finding) and CYBR was dropped from the live
+  // Cybersecurity node after CyberArk went inactive/non-tradable at the broker
+  // (Palo Alto Networks acquisition). This mirror had drifted from both changes,
+  // so the check was alarming on its own stale copy of the request, not on
+  // production. Keep this list in sync with the live nodes going forward.
   try {
     const BAR_STALE_DAYS = 5; // calendar days — tolerates weekends + one holiday
     const BAR_GROUPS = [ // mirror of the live n8n fetch nodes (symbols + limit)
-      { node: 'Cybersecurity', limit: 3600, symbols: 'CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,CHKP,QLYS,TENB' },
-      { node: 'Defense',       limit: 3600, symbols: 'LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON' },
-      { node: 'Nuclear',       limit: 3600, symbols: 'CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE' },
-      { node: 'Copper',        limit: 3600, symbols: 'FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC' },
-      { node: 'AI Semis',      limit: 3600, symbols: 'ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS' },
-      { node: 'Cloud',         limit: 3600, symbols: 'ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB' },
-      { node: 'Oil Gas',       limit: 3600, symbols: 'XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG' },
-      { node: 'Data Centers',  limit: 3600, symbols: 'EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC' },
-      { node: 'Healthcare',    limit: 3600, symbols: 'UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO' },
-      { node: 'Financials',    limit: 3600, symbols: 'JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF' },
-      { node: 'SPY',           limit: 4400, symbols: 'SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF' },
+      { node: 'Cybersecurity', limit: 10000, symbols: 'CRWD,PANW,ZS,OKTA,FTNT,S,CHKP,QLYS,TENB' },
+      { node: 'Defense',       limit: 10000, symbols: 'LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON' },
+      { node: 'Nuclear',       limit: 10000, symbols: 'CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE' },
+      { node: 'Copper',        limit: 10000, symbols: 'FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC' },
+      { node: 'AI Semis',      limit: 10000, symbols: 'ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS' },
+      { node: 'Cloud',         limit: 10000, symbols: 'ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB' },
+      { node: 'Oil Gas',       limit: 10000, symbols: 'XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG' },
+      { node: 'Data Centers',  limit: 10000, symbols: 'EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC' },
+      { node: 'Healthcare',    limit: 10000, symbols: 'UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO' },
+      { node: 'Financials',    limit: 10000, symbols: 'JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF' },
+      { node: 'SPY',           limit: 10000, symbols: 'SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF' },
     ];
     const dataHeaders = {
       'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,

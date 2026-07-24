@@ -24,6 +24,8 @@
     { "file": "watchdog_parse_flip.js",         "workflow": "watchdog",     "node": "Parse Flip Response" },
     { "file": "detect_trailing_stop_exits.js",  "workflow": "watchdog",     "node": "Find TS Exits" },
     { "file": "build_ts_pm_payload.js",         "workflow": "watchdog",     "node": "Build TS PM Payload" },
+    { "file": "watchdog_find_missing_stops.js", "workflow": "watchdog",     "node": "Find Missing Stops" },
+    { "file": "watchdog_build_selfheal_email.js","workflow": "watchdog",    "node": "Build Self-Heal Email" },
     { "file": "post_mortem_build_input.js",     "workflow": "postmortem",   "node": "Build Post-Mortem Input" },
     { "file": "post_mortem_store.js",           "workflow": "postmortem",   "node": "Parse Post-Mortem Output" },
     { "file": "fundamentals_parse.js",          "workflow": "fundamentals", "node": "Parse Fundamentals" },

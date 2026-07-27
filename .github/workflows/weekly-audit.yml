@@ -17,7 +17,7 @@ on:
     inputs:
       model:
         description: "Claude model (sonnet = reliable on subscription quota; opus = deeper but may hit session limits; fable = claude-fable-5)"
-        default: "claude-fable-5"
+        default: "claude-opus-5"
         required: false
 
 permissions:
@@ -64,7 +64,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_BASE_URL: ${{ secrets.ALPACA_BASE_URL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AUDIT_MODEL: ${{ github.event.inputs.model || 'claude-fable-5' }}
+          AUDIT_MODEL: ${{ github.event.inputs.model || 'claude-opus-5' }}
         run: |
           claude -p "$(cat automation/weekly_audit_prompt.md)" \
             --model "$AUDIT_MODEL" \

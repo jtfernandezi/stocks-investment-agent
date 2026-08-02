@@ -194,9 +194,14 @@ Use news to:
 - If news directly contradicts the specialist thesis (e.g., specialist is BULLISH but news shows a major contract loss or earnings miss), document the conflict in your thesis and reduce size one tier or skip.
 
 ### 9. TECHNICALS (specialist picks + open positions)
-RSI(14), 20-day MA extension, 50-day and 200-day simple moving averages, and 52-week range percentile for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
+RSI(14), 20-day MA extension, 50-day and 200-day simple moving averages, 52-week range percentile, and the **next scheduled earnings date** for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
 
 Use technicals to:
+- **Earnings date — decide it at ENTRY, not later.** Section 8 now shows the next earnings date for every candidate, not just for what you already hold (section 5 remains the ≤7-day view of open positions). Before opening any position, look at its earnings line and commit to a plan:
+  - **⛔ ≤2 days:** do not open. Watchlist it with a post-earnings trigger.
+  - **⚠️ inside the 5-day minimum hold:** do not open. You cannot hold it long enough to satisfy the minimum-hold rule before the event forces a decision — exactly the churn pattern to avoid.
+  - **Lands during a normal 2–6 week hold:** this is the common case and it is *allowed*, but it is a decision you are making now. Either (a) accept that you will hold through the print, and say so in your thesis, or (b) do not open the position. What you may NOT do is open it and then close it days later citing `earnings_risk` for a date that was on this list when you entered — that is a self-inflicted round trip: it pays entry and exit costs, burns the hold clock, and it has been the single most common exit in the fund's recent record.
+  - `exit_reason: "earnings_risk"` is reserved for earnings risk that was **NOT knowable at entry** — a date that moved, was newly scheduled, or a pre-announcement. If the date is unchanged from what you saw at entry, exit on thesis, stop, or give-back logic instead, or hold through it as planned.
 - **20d MA extension — the entry-timing gate (enforced in code):** a long more than +5% above its 20d MA, or a short more than -5% below it, is chasing an extended move and WILL be blocked at execution regardless of your output. Do not propose these entries — put the ticker on the watchlist with a pullback trigger instead ("enter on retracement toward the 20d MA"). The best long entry in an uptrend is the pullback toward the mean while the trend (50d/200d MA) remains intact; the best short entry is the failed bounce back toward the mean in a downtrend — never the washed-out low. News-driven conviction does not override this: by the time news reaches you, the pop it caused is usually the wrong price.
 - **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier. For shorts, overbought RSI confirms the setup.
 - **RSI < 30 (oversold):** a short entry here is risky — a bounce is likely. For longs, oversold RSI on a BULLISH signal is a high-conviction entry point.

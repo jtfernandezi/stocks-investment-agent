@@ -313,12 +313,56 @@ function formatFundamentals(tickers, fundamentalsMap) {
   return lines.join('\n');
 }
 
+// ── HELPER: Nearest upcoming earnings per ticker ──────────────────────────────
+// `02` computes ctx.earningsAtRisk only for tickers ALREADY HELD, and only within
+// 7 days. So the orchestrator has had NO earnings data for entry candidates — at
+// entry time it could see only whatever free text the specialist wrote into its
+// `earnings_risk` pick field. That made the documented entry-side earnings rule
+// (§7 "earnings ≤2 days → reduce one tier / skip") unenforceable by construction,
+// and it shows in the trade record: all 7 `earnings_risk` exits to date were for
+// dates already sitting in earnings_calendar days-to-weeks BEFORE the position was
+// opened (audit 2026-08-02 — 6 of the last 8 closes exited this way).
+// The calendar can hold duplicate rows per ticker (Backlog #3 — e.g. DDOG has both
+// 2026-08-03 and 2026-08-06), so take the EARLIEST future date, not the first match.
+function nearestEarnings(earningsRows) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const byTicker = {};
+  for (const row of earningsRows || []) {
+    if (!row || !row.ticker || !row.earnings_date) continue;
+    const d = new Date(row.earnings_date);
+    if (isNaN(d.getTime())) continue;
+    const daysUntil = Math.round((d - today) / 86400000);
+    if (daysUntil < 0) continue;                        // already reported
+    const prev = byTicker[row.ticker];
+    if (!prev || daysUntil < prev.days_until) {
+      byTicker[row.ticker] = {
+        days_until: daysUntil,
+        date: (typeof row.earnings_date === 'string' ? row.earnings_date : d.toISOString()).slice(0, 10),
+      };
+    }
+  }
+  return byTicker;
+}
+
 // ── HELPER: Format technicals ─────────────────────────────────────────────────
-function formatTechnicals(tickers, priceMap) {
+function formatTechnicals(tickers, priceMap, earningsRows) {
   if (!tickers || tickers.length === 0) return '  No tickers to display.';
+  const earnMap = nearestEarnings(earningsRows);
+  // Horizon = the intended 2–6 week hold. Earnings inside this window will land
+  // WHILE the position is held — that is the call to make before entering, not after.
+  const EARN_HORIZON_DAYS = 42;
+  const earnLabel = ticker => {
+    const e = earnMap[ticker];
+    if (!e || e.days_until > EARN_HORIZON_DAYS) return 'none within 6wk';
+    const flag = e.days_until <= 2 ? ' ⛔ ≤2d'
+      : e.days_until <= 10 ? ' ⚠️ lands inside the 5-day minimum hold'
+      : ' — lands during a normal 2–6wk hold';
+    return `in ${e.days_until}d (${e.date})${flag}`;
+  };
   return tickers.map(ticker => {
     const p = priceMap[ticker];
-    if (!p) return `  ${ticker}: No price data`;
+    if (!p) return `  ${ticker}: No price data | Earnings: ${earnLabel(ticker)}`;
 
     const rsiLabel = p.rsi14 == null ? 'N/A'
       : p.rsi14 > 70 ? `${p.rsi14} (overbought)`
@@ -339,7 +383,7 @@ function formatTechnicals(tickers, priceMap) {
 
     const pct52wStr = p.pct_52w != null ? `${p.pct_52w}th pct` : 'N/A';
 
-    return `  ${ticker}: RSI ${rsiLabel} | 20d MA ${extStr} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr}`;
+    return `  ${ticker}: RSI ${rsiLabel} | 20d MA ${extStr} | 50d MA ${sma50Str} | 200d MA ${sma200Str} | 52w: ${pct52wStr} | Earnings: ${earnLabel(ticker)}`;
   }).join('\n');
 }
 
@@ -571,9 +615,14 @@ Use news to:
 - If news directly contradicts the specialist thesis (e.g., specialist is BULLISH but news shows a major contract loss or earnings miss), document the conflict in your thesis and reduce size one tier or skip.
 
 ### 9. TECHNICALS (specialist picks + open positions)
-RSI(14), 50-day and 200-day simple moving averages, and 52-week range percentile for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
+RSI(14), 50-day and 200-day simple moving averages, 52-week range percentile, and the **next scheduled earnings date** for all specialist-recommended picks and open positions. Provided in section 8 of this prompt.
 
 Use technicals to:
+- **Earnings date — decide it at ENTRY, not later.** Section 8 now shows the next earnings date for every candidate, not just for what you already hold (section 5 remains the ≤7-day view of open positions). Before opening any position, look at its earnings line and commit to a plan:
+  - **⛔ ≤2 days:** do not open. Watchlist it with a post-earnings trigger.
+  - **⚠️ inside the 5-day minimum hold:** do not open. You cannot hold it long enough to satisfy the minimum-hold rule before the event forces a decision — exactly the churn pattern to avoid.
+  - **Lands during a normal 2–6 week hold:** this is the common case and it is *allowed*, but it is a decision you are making now. Either (a) accept that you will hold through the print, and say so in your thesis, or (b) do not open the position. What you may NOT do is open it and then close it days later citing \`earnings_risk\` for a date that was on this list when you entered — that is a self-inflicted round trip: it pays entry and exit costs, burns the hold clock, and it has been the single most common exit in the fund's recent record.
+  - \`exit_reason: "earnings_risk"\` is reserved for earnings risk that was **NOT knowable at entry** — a date that moved, was newly scheduled, or a pre-announcement. If the date is unchanged from what you saw at entry, exit on thesis, stop, or give-back logic instead, or hold through it as planned.
 - **20d MA extension — the entry-timing gate (enforced in code):** a long more than +5% above its 20d MA, or a short more than -5% below it, is chasing an extended move and WILL be blocked at execution regardless of your output. Do not propose these entries — put the ticker on the watchlist with a pullback trigger instead ("enter on retracement toward the 20d MA"). The best long entry in an uptrend is the pullback toward the mean while the trend (50d/200d MA) remains intact; the best short entry is the failed bounce back toward the mean in a downtrend — never the washed-out low. News-driven conviction does not override this: by the time news reaches you, the pop it caused is usually the wrong price.
 - **RSI > 70 (overbought):** a long entry here is chasing — the move may be extended. Reduce size one tier. For shorts, overbought RSI confirms the setup.
 - **RSI < 30 (oversold):** a short entry here is risky — a bounce is likely. For longs, oversold RSI on a BULLISH signal is a high-conviction entry point.
@@ -927,7 +976,7 @@ ${formatPickNews(pickNewsItems)}
 ---
 
 ## 8. TECHNICALS (specialist picks + open positions)
-${formatTechnicals(candidateTickers, ctx.priceMap)}
+${formatTechnicals(candidateTickers, ctx.priceMap, ctx.earningsRows)}
 
 ---
 

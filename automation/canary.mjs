@@ -362,6 +362,55 @@ async function isTradingDay(today) {
     }
   } catch (e) { issues.push(`Could not reconcile trades vs Alpaca fills: ${e.message}`); }
 
+  // ── CHECK: pattern-EV feedback loop is actually recording ───────────────────
+  // `pattern_performance` is the fund's entry-quality feedback loop: the Post-Mortem
+  // workflow's `Update Pattern Performance` node recomputes it from `trades` after
+  // every close, and `06` renders it to the orchestrator as EV guidance. That node
+  // carries continueOnFail:true, so ANY error in the recompute is swallowed — the
+  // execution still reports success, the rest of the post-mortem chain completes
+  // (trade flips CLOSED, accuracy updates, metadata is deleted), and every other
+  // canary check stays green while the table quietly freezes.
+  //
+  // This has now broken twice in three weeks, each time differently:
+  //   2026-07-19  CHECK constraint allowed only the legacy TREND/BIAS/... labels,
+  //               so every Phase-1 (PULLBACK/MOMENTUM/...) close was rejected.
+  //   2026-08-02  `pattern_type` is NOT NULL, and one hand-reconstructed trades row
+  //               (DELL, inserted per the 2026-07-19 runbook) has entry_pattern NULL.
+  //               The recompute is a single INSERT..SELECT..GROUP BY entry_pattern,
+  //               so that one NULL group aborts the WHOLE statement — no pattern
+  //               updates at all since 2026-07-21, across 6 real closes.
+  //
+  // Rather than encode either specific cause, compare the stored aggregate to what
+  // the same source data says it should be. That stays correct as labels, rows and
+  // constraints change, and catches any future variant of "the recompute silently
+  // stopped running". Read-only; mirrors the live node's WHERE clause exactly.
+  try {
+    const expected = await sql`
+      SELECT entry_pattern AS pattern_type, count(*)::int AS total
+      FROM stocks.trades
+      WHERE status = 'CLOSED'
+        AND exit_reason IS DISTINCT FROM 'never_executed'
+        AND exit_date >= CURRENT_DATE - INTERVAL '90 days'
+      GROUP BY entry_pattern`;
+    const stored = await sql`SELECT pattern_type, total_trades::int AS total FROM stocks.pattern_performance`;
+    const storedMap = new Map(stored.map(r => [r.pattern_type, r.total]));
+
+    const nullGroup = expected.find(r => r.pattern_type == null);
+    const drift = [];
+    for (const row of expected) {
+      if (row.pattern_type == null) continue; // reported separately below
+      const have = storedMap.get(row.pattern_type);
+      if (have == null)          drift.push(`${row.pattern_type}: ${row.total} closed trade(s) but NO row in pattern_performance`);
+      else if (have !== row.total) drift.push(`${row.pattern_type}: pattern_performance says ${have}, trades says ${row.total}`);
+    }
+    if (nullGroup) {
+      drift.push(`${nullGroup.total} closed trade(s) have entry_pattern = NULL — because pattern_performance.pattern_type is NOT NULL, this NULL group makes the whole INSERT..SELECT recompute fail, so NO pattern row can update (2026-08-02 class). Backfill entry_pattern on those rows, or add "AND entry_pattern IS NOT NULL" to the Update Pattern Performance node's WHERE clause`);
+    }
+    if (drift.length) {
+      issues.push(`PATTERN-EV FEEDBACK LOOP STALE — pattern_performance no longer matches closed trades, so the orchestrator is being fed outdated entry-quality EV: ${drift.join('; ')}. The Post-Mortem 'Update Pattern Performance' node has continueOnFail:true, so it is failing silently — check that node's SQL against the trades table.`);
+    }
+  } catch (e) { issues.push(`Could not verify pattern-EV feedback loop: ${e.message}`); }
+
   // ── REPORT ──────────────────────────────────────────────────────────────────
   if (issues.length === 0) {
     console.log(`[canary] ✅ all green (${stamp}) — silent.`);

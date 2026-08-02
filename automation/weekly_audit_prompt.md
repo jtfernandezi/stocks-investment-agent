@@ -59,7 +59,15 @@ Before analyzing fresh data, read your own memory:
 
 - `ls audits/` and read the **2 most recent** `audits/*.md` reports.
 - Read `audits/IMPROVEMENT_BACKLOG.md` in full — this is now your **Initiatives Register** (R&D agenda with maturity grades; see Section 4b).
-- Check the daily canary's recent health: in CI run `gh run list --workflow=daily-canary.yml --limit 7 --json conclusion,createdAt,displayTitle`; locally `tail automation/logs/canary.log`. Did it run each weekday? Any failures? (It alarms via Telegram on failure and is silent on success, so a clean run history = healthy.)
+- Check the daily canary's recent health. ⚠️ **`conclusion` is NOT a health signal.** `canary.mjs` deliberately `process.exit(0)`s even when it alarms ("Always exits 0 so launchd never flags it; the alarm IS the signal"), so a run that found 3 broken things still reports `conclusion: success`. Reading `--json conclusion` will tell you the fund is healthy while it is on fire — this misled the 2026-08-02 audit into initially scoring a 4-day total outage as "canary green". Read the **logs**:
+  ```bash
+  gh run list --workflow=daily-canary.yml --limit 10 --json databaseId,createdAt \
+    --jq '.[] | "\(.createdAt) \(.databaseId)"'
+  # then, per run id:
+  gh run view <id> --log | grep -F '[canary]'
+  ```
+  `[canary] ✅ all green` = healthy. `[canary] 🚨 N issue(s):` = it alarmed; the following `  - ` lines are the findings. Locally: `tail automation/logs/canary.log`.
+  Ask: did it run each weekday? Did any run alarm? And — **did the same alarm repeat across consecutive days?** A repeated unactioned alarm is itself a top-priority finding: detection worked, remediation didn't, and the fund was broken for every one of those days.
 - Check which prior PRs were merged: `git log --oneline -20 main` and `gh pr list --state all --limit 15`. A merged R&D initiative should now show up in the live code/n8n state.
 
 Hold these questions throughout:

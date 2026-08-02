@@ -163,7 +163,7 @@ BUY/SELL are for longs. SHORT/COVER are for shorts. COVER = "buy back to close a
 
 - **Shares calculation**: always recalculated from live price in `07_parse_orchestrator_output.js` — the LLM's share count is ignored (it uses stale prices)
 - **SQL injection**: all LLM-generated text goes through `sqlEsc = s => s.replace(/'/g, "''")` before string interpolation in every Postgres query
-- **Price bars**: fetched in 9 parallel HTTP nodes (one per niche + SPY), each 10 symbols × up to ~350 bars (limit=3600 shared across all symbols in the request, start=2025-01-01). **Critical**: Alpaca's multi-symbol bars endpoint applies `limit` as a total across all symbols — it fills each ticker sequentially (alphabetically) until the limit is exhausted. With 10 symbols needing ~350 bars each = 3,500 bars total, `limit=3600` ensures all tickers get their full history. Previously `limit=252` meant only the alphabetically-first ticker per node got any bars. A `Merge Price Bars` Merge node (with `numberInputs: 9` and each HTTP node on a distinct port index 0–8) aggregates them before a Code node `Fetch Price Bars` merges all 9 responses into `{bars: {...}}`. Do NOT connect the 9 HTTP nodes directly to the Code node — each trigger fires the Code node separately, causing the entire pipeline to run 9 times.
+- **Price bars**: fetched in 11 parallel HTTP nodes (one per niche + SPY/ETFs), each ~10 symbols, `limit=10000`, `start=2025-01-01`. **Critical**: Alpaca's multi-symbol bars endpoint applies `limit` as a total across all symbols — it fills each ticker sequentially (alphabetically) until the limit is exhausted, so an under-sized limit silently truncates the alphabetically-*last* tickers rather than erroring. Because `start` is fixed while the window grows every trading day, **any fixed limit eventually expires**: `limit=252` gave only the first ticker any bars; `limit=3600` was sized for ~350 bars/symbol in May 2026 and was silently outgrown ~2026-06-06, serving ZS/RTX/VST/VALE/TER/WDAY/XOM/WDC/UNH/WFC year-old prices for a month (audit 2026-07-19 — corrupted real trade records). Raised to `limit=10000` (Alpaca's per-request max) on 2026-07-21, which at ~250 trading days/yr covers the 10-symbol nodes until ~2028. The durable alternative is a rolling `start`. The daily canary replays these exact requests and alarms on any stale series. A `Merge Price Bars` Merge node (`numberInputs: 11`, each HTTP node on a distinct port index 0–10) aggregates them before a Code node `Fetch Price Bars` merges all 11 responses into `{bars: {...}}`. Do NOT connect the HTTP nodes directly to the Code node — each trigger fires the Code node separately, causing the entire pipeline to run 11 times.
 - **Merge nodes with multiple inputs**: must set `numberInputs: N` and wire each upstream node to a distinct port index 0..N-1. Without this, the Merge node fires after 2 items (default) instead of waiting for all N.
 - **Store All Signals node**: set `alwaysOutputData: true` — an `INSERT` without `RETURNING` returns 0 rows; n8n sees no output and stops execution. The SQL also uses `ON CONFLICT (niche, session) DO UPDATE SET ...` to upsert (overwrite stale signals on re-runs).
 - **specialist_signals table**: has a `UNIQUE (niche, session)` constraint. The upsert ensures exactly 1 canonical row per niche/session slot.
@@ -182,20 +182,20 @@ All triggered in parallel by `Collect Orders`. Each HTTP node uses `Alpaca - Dat
 
 | Node | Symbols | limit |
 |------|---------|-------|
-| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CYBR,CHKP,QLYS,TENB | 3600 |
-| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 3600 |
-| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 3600 |
-| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC | 3600 |
-| Fetch Bars AI Semis | ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS | 3600 |
-| Fetch Bars Cloud | ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB | 3600 |
-| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 3600 |
-| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 3600 |
-| Fetch Bars Healthcare | UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO | 3600 |
-| Fetch Bars Financials | JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF | 3600 |
-| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF | 4400 |
+| Fetch Bars Cybersecurity | CRWD,PANW,ZS,OKTA,FTNT,S,CHKP,QLYS,TENB (9 — CYBR dropped 2026-07-24) | 10000 |
+| Fetch Bars Defense | LMT,RTX,NOC,GD,HII,LHX,KTOS,RCAT,PLTR,AXON | 10000 |
+| Fetch Bars Nuclear | CCJ,UEC,NXE,DNN,SMR,OKLO,CEG,VST,ETR,NEE | 10000 |
+| Fetch Bars Copper | FCX,SCCO,TECK,HBM,VALE,MP,AA,ALB,SQM,LAC | 10000 |
+| Fetch Bars AI Semis | ARM,AMAT,LRCX,KLAC,ON,TER,NXPI,MCHP,MPWR,SNPS | 10000 |
+| Fetch Bars Cloud | ORCL,NOW,CRM,DDOG,SNOW,ADBE,NET,TEAM,WDAY,MDB | 10000 |
+| Fetch Bars Oil Gas | XOM,CVX,COP,SLB,HAL,MPC,PSX,VLO,OXY,EOG | 10000 |
+| Fetch Bars Data Centers | EQIX,DLR,AMT,IREN,CORZ,VRT,SMCI,DELL,HPE,WDC | 10000 |
+| Fetch Bars Healthcare | UNH,ELV,CVS,LLY,MRK,PFE,ABBV,ISRG,MDT,TMO | 10000 |
+| Fetch Bars Financials | JPM,BAC,WFC,C,GS,MS,SCHW,BLK,AXP,COF | 10000 |
+| Fetch Bars SPY | SPY,HACK,ITA,URA,COPX,SOXX,SKYY,XLE,DTCR,XLV,XLF | 10000 |
 | **Fetch Price Bars** (Code) | Merges all 11 → `{bars: {...}}` (hardcoded sourceNodes list — add new bars nodes here) | — |
 
-`Merge Price Bars` is a v3 Merge with `numberInputs: 11` (one port per bars node). `Fetch Bars SPY` carries SPY + all 10 sector ETFs at `limit=4400` (11 symbols × ~355 bars).
+`Merge Price Bars` is a v3 Merge with `numberInputs: 11` (one port per bars node). `Fetch Bars SPY` carries SPY + all 10 sector ETFs at `limit=10000`.
 
 ## Key Implementation Details — Execute Market Order
 
@@ -478,7 +478,7 @@ All four workflows activated and running autonomously.
 
 | Niche ID | Display Name | Tickers |
 |----------|-------------|---------|
-| `cybersecurity` | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CYBR, CHKP, QLYS, TENB |
+| `cybersecurity` | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CHKP, QLYS, TENB (9 — CYBR dropped 2026-07-24, non-tradable at broker) |
 | `defense` | Defense | LMT, RTX, NOC, GD, HII, LHX, KTOS, RCAT, PLTR, AXON |
 | `nuclear_uranium` | Nuclear / Uranium | CCJ, UEC, NXE, DNN, SMR, OKLO, CEG, VST, ETR, NEE |
 | `copper_minerals` | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, AA, ALB, SQM, LAC |

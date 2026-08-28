@@ -17,7 +17,7 @@ cd "$PROJECT_DIR" 2>/dev/null || {
 }
 
 # Resolve claude + node robustly (launchd has no nvm/PATH): pinned → newest nvm → PATH
-CLAUDE="/Users/jjtfernandez/.nvm/versions/node/v24.15.0/bin/claude"
+CLAUDE="$HOME/.nvm/versions/node/v24.15.0/bin/claude"
 [ -x "$CLAUDE" ] || CLAUDE="$(ls -t "$HOME"/.nvm/versions/node/*/bin/claude 2>/dev/null | head -1)"
 [ -x "$CLAUDE" ] || CLAUDE="$(command -v claude || true)"
 

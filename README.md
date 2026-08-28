@@ -1,117 +1,140 @@
 # Stocks Investment Agent
 
-AI-powered paper trading system for individual US-listed stocks. Multi-agent architecture with 10 sector specialists and a portfolio manager orchestrator, competing against the S&P 500 over a 3-month period with a $60,000 paper portfolio.
+**A multi-agent paper-trading system that audits itself, files pull requests against its own codebase, and is structurally prevented from deploying its own changes.**
 
-## Objective
+Eleven LLM agents research and trade a $60,000 paper portfolio across 100 US equities. A separate meta-layer reviews the fund every week, diagnoses its own failures, writes the fixes as code, and opens them as PRs — where a human, and only a human, decides whether they ship.
 
-Beat SPY's cumulative return over 3 months. Not match it — beat it. Swing/position trading strategy with a 2–6 week horizon per position, using both longs and shorts.
+<!-- BADGES -->
 
-## Stack
+| | |
+|---|---|
+| **Live for** | 3 months of continuous autonomous operation |
+| **Sessions** | 3 trading sessions/day + a 30-minute watchdog + a nightly integrity canary |
+| **Agents** | 10 sector specialists → 1 portfolio orchestrator → 1 post-mortem attributor |
+| **Self-audit** | Weekly, longitudinal, ships coded PRs |
 
-| Component | Technology |
-|-----------|-----------|
-| Workflow orchestration | n8n (Railway) |
-| Database | Neon (PostgreSQL) |
-| Trade execution | Alpaca Paper Trading API |
-| Dashboard | Next.js 15 on Vercel — 6 pages wired to Neon + Alpaca |
-| Specialist LLMs | Google Gemini 2.5 Flash |
-| Orchestrator LLM | GPT-5.1 |
-| Fundamentals data | Finnhub API (free tier, morning refresh only) |
-| Price data | Alpaca Data API (~350 daily bars, all 100 stocks + SPY + 10 sector ETFs) |
-| News | RSS feeds (2 per niche, up to 15 articles merged per session) |
+<!-- SCREENSHOTS -->
+
+---
+
+## Why this is interesting
+
+Most "AI trading bot" projects are a prompt and a broker API. The hard problems here weren't in the trading logic — they were in everything around it:
+
+**1. An agent that improves its own source code, safely.** A weekly headless Claude Code run audits the fund across 7 levers, reads every prior audit for longitudinal context, and codes its proposals into PRs. The safety property is a boundary, not a promise: the audit holds a **SELECT-only database role** (the DB itself rejects writes), runs with **all MCP servers disabled** so it cannot reach a writable connection, is **GET-only** against n8n and the broker, and **can never merge or push to `main`**. Proposals are tiered by blast radius — `[A]` tunable fix, `[B-code]` isolated code-only change, `[B-spec]` anything requiring infrastructure rewiring, which stays prose until a human builds it. Worst case is a PR you close.
+
+**2. Silent failures are the real enemy.** In a system where every stage has a fallback, a broken component doesn't crash — it returns empty and everything downstream quietly degrades. Two examples this codebase caught the hard way:
+- A dropped database column made one query fail; `continueOnFail` swallowed it; a confidence cap defaulted on; **the fund sat 100% in cash for two days** without a single error.
+- The price-data API applies its row limit *across* symbols, not per symbol. As the history window grew, the limit was silently outgrown and the alphabetically-last ticker in each batch began receiving **year-old prices**. Three trades were sized and recorded against fiction before a weekly audit caught it.
+
+Both drove permanent additions to a deterministic daily canary that reconciles the database against the broker and alarms on integrity classes, not exceptions.
+
+**3. Feedback loops that close.** Every closed position triggers an attribution post-mortem. Specialist confidence is recalibrated against realized hit rate. Entry patterns accumulate expected value and negative-EV patterns block new entries. Lessons are injected into the next session's context.
+
+---
 
 ## Architecture
 
-### Agents
+```
+                    ┌─────────────── Fundamentals Refresh (8:30 AM) ───┐
+                    ▼                                                   │
+   RSS + Price Bars + Fundamentals                                      │
+                    │                                                   │
+                    ▼                                                   │
+   ┌────────── 10 Sector Specialists (Gemini 2.5 Flash, parallel) ──────┘
+   │  cybersecurity · defense · nuclear · copper · semis
+   │  SaaS · oil&gas · data centers · healthcare · financials
+   └────────────────────────────┬───────────────────────────────
+                                ▼
+                  Portfolio Orchestrator (GPT-5.1)
+                  live positions · correlation · earnings
+                  calibrated confidence · past lessons
+                                │
+                    ┌───────────┴───────────┐
+                    ▼                       ▼
+         Hard Risk Limits (code)      Watchlist / Letters
+         position caps · sector caps
+         extension gate · throttle
+                    │
+                    ▼
+              Alpaca (paper) ──── GTC trailing stops
+                    │
+                    ▼
+         Post-Mortem Attribution ──► calibration feedback
+```
 
-**10 Specialist Analysts** (one per niche, Gemini 2.5 Flash)
-- Input: sector news, price/momentum data, fundamentals, earnings calendar, own recent signals, own 30-day accuracy history
-- Output: sector direction (BULLISH/BEARISH/NEUTRAL), conviction (HIGH/MEDIUM/LOW), confidence (0–1), 2–3 long picks + a required laggard short pick (leader/laggard pairs) with thesis
+**Guardrails live in code, not prompts.** The orchestrator can output anything; a deterministic layer enforces max positions, per-sector caps, short exposure, a cash guard, a ±5% entry-extension gate, and a per-session entry throttle. An LLM cannot argue its way past them.
 
-**1 Portfolio Manager Orchestrator** (GPT-5.1)
-- Input: 10 specialist signals, live portfolio state from Alpaca, earnings at-risk flags, correlation matrix, 5-session signal history per sector, feedback system data
-- Output: BUY/SELL/SHORT/COVER actions, watchlist updates, portfolio review per open position
+**Three independent safety layers.** A watchdog checks open positions every 30 minutes and self-heals missing stops. A nightly canary reconciles three sources of truth (broker, trade ledger, position metadata) and alarms on drift. A weekly audit looks for what the canary structurally cannot see.
 
-**1 Post-Mortem Agent** (GPT-4o, triggered after every SELL/COVER)
-- Runs attribution analysis on every closed position (3 components: sector accuracy, entry timing, exit timing)
-- Generates one specific, actionable lesson stored in Neon
-- Feeds back into the orchestrator as calibrated intelligence
+---
 
-### Feedback / Learning System
+## Tech Stack
 
-The system improves automatically over time without code changes:
+| Layer | Choice | Why |
+|---|---|---|
+| Orchestration | n8n (Railway) | Visual DAG for a branching multi-agent pipeline; parallel fan-out is native |
+| Database | Neon Postgres | Serverless; role separation gave the audit layer its read-only capability |
+| Execution | Alpaca Paper API | Native GTC trailing stops — no price-polling loop needed |
+| Specialists | Gemini 2.5 Flash | 10 parallel calls/session; thinking disabled cut cost ~85% |
+| Orchestrator | GPT-5.1 | The one call doing genuine multi-constraint reasoning |
+| Dashboard | Next.js 15 / Vercel | 6 pages against Neon + Alpaca |
+| Meta-audit | Claude Code (headless) in GitHub Actions | Runs with the laptop off |
 
-1. **Effective confidence calibration** — each specialist's raw confidence is scaled by `hit_rate_30d / avg_reported_confidence_30d`. Consistently overconfident specialists are discounted; underconfident ones are trusted more.
-2. **Pattern EV tracking** — historical expected value per entry pattern. Since 2026-07-03 entries are classified by measurable price conditions at execution (PULLBACK / BREAKOUT / MOMENTUM / COUNTER_TREND / EXTENDED / CAPITULATION from 20d-SMA extension, 50d trend side, and volume); legacy signal-persistence labels (TREND/BIAS/...) remain as history. Negative-EV patterns (≥5 trades) block new entries unless the pattern is flagged dominant (≥60% of all closed trades — then its EV is just the fund's overall record and blocks nothing). EV > 5% gets priority.
-3. **Trade lessons injection** — last 5 post-mortem lessons are injected into the orchestrator each session. Mistakes are actively checked before opening similar trades.
-4. **Counterfactual tracking** — alternative picks (not chosen) are tracked for the same hold period to validate or challenge stock selection decisions.
+---
 
-### Workflow Schedule
+## Engineering decisions worth discussing
 
-| Workflow | Trigger | Purpose |
-|----------|---------|---------|
-| Main analysis | Cron 3×/day (pre-market, midday, post-market) | Run all 10 specialists → orchestrator → execute trades |
-| Watchdog | Cron every 30 min at :10 and :40 (10:10 AM–3:40 PM ET) | Check for thesis flip (signal reversal) on open positions |
-| Post-mortem | Webhook, fires after every SELL/COVER | Attribution analysis + lesson generation |
+**Cost shape over model quality.** Specialists moved GPT-4o → Gemini 2.5 Flash with thinking disabled (~$14/mo → ~$2/mo) after measuring that thinking tokens were ~80% of spend for a structured-output task. The orchestrator stayed on the frontier model — it's one call per session and the only one doing real reasoning. Spend where reasoning compounds.
 
-Trailing stops are managed natively by Alpaca (GTC trail_percent orders) — no price monitoring needed in n8n.
+**Deterministic where correctness matters.** Share counts are recomputed from live prices, never taken from LLM output. All generated text is escaped before SQL interpolation. Risk limits are code. The LLM proposes; arithmetic disposes.
 
-## Niches (10) — 100 Stocks
+**`merge == deploy`, with a drift guard.** Merging a code-node change triggers a sync that pushes it into the live workflow — but it first verifies the live node still matches what git held *before* the merge. If someone hand-edited production, it refuses and alerts rather than clobbering.
 
-| # | Niche | Tickers |
-|---|-------|---------|
-| 1 | Cybersecurity | CRWD, PANW, ZS, OKTA, FTNT, S, CYBR, CHKP, QLYS, TENB |
-| 2 | Defense | LMT, RTX, NOC, GD, HII, LHX, KTOS, RCAT, PLTR, AXON |
-| 3 | Nuclear / Uranium | CCJ, UEC, NXE, DNN, SMR, OKLO, CEG, VST, ETR, NEE |
-| 4 | Copper / Critical Minerals | FCX, SCCO, TECK, HBM, VALE, MP, AA, ALB, SQM, LAC |
-| 5 | Semiconductors & EDA | ARM, AMAT, LRCX, KLAC, ON, TER, NXPI, MCHP, MPWR, SNPS |
-| 6 | Enterprise SaaS | ORCL, NOW, CRM, DDOG, SNOW, ADBE, NET, TEAM, WDAY, MDB |
-| 7 | Oil & Gas | XOM, CVX, COP, SLB, HAL, MPC, PSX, VLO, OXY, EOG |
-| 8 | Data Centers & AI Infrastructure | EQIX, DLR, AMT, IREN, CORZ, VRT, SMCI, DELL, HPE, WDC |
-| 9 | Healthcare & Pharma | UNH, ELV, CVS, LLY, MRK, PFE, ABBV, ISRG, MDT, TMO |
-| 10 | Financials | JPM, BAC, WFC, C, GS, MS, SCHW, BLK, AXP, COF |
+**Honest instrumentation.** The `audits/` directory is the project's most interesting reading: unedited weekly reports where the system grades itself 🔴 and documents its own data-corruption incidents. They're published deliberately — the failure analysis is the engineering.
 
-## Risk Management
+---
 
-- **Conviction threshold:** only HIGH conviction (confidence ≥ 0.75) triggers trades
-- **Sizing — Longs:** $8,000 (confidence ≥ 0.85) / $5,000 (0.75–0.84)
-- **Sizing — Shorts:** $6,000 (confidence ≥ 0.85) / $3,000 (0.75–0.84)
-- **Max short exposure:** $12,000 (20% of portfolio)
-- **Max open positions:** 12 (longs + shorts combined)
-- **Max per sector:** up to 2 longs (2nd requires TREND pattern + ≤$5k size) + 1 short
-- **Entry-extension gate (2026-07-03):** no BUY more than +5% above the 20d SMA, no SHORT more than -5% below it — hard-blocked in code. Entries happen on pullbacks toward the mean, never chases.
-- **Entry throttle (2026-07-03):** max 2 new positions and $12k new exposure per session — deployment staggers across sessions instead of all-at-once batch bets.
-- **Trailing stops:** ATR × 3, clamped 8–20%, set natively via Alpaca GTC orders
-- **Penalties (stack multiplicatively):** correlation >0.70 with open position, earnings ≤2 days, NOISE signal history, FIRST_SIGNAL — each reduces sizing one tier
-- **Minimum hold (2026-07-03):** no judgment-based exit (thesis flip / profit taking / aging) in a position's first 5 trading days — the trailing stop and earnings exit are the only exits during that window
-- **Thesis stop:** exit when the specialist's flip is confirmed across 2+ consecutive sessions AND price breaks the 20d MA against the position (one-session flips are news noise — they went 0-for-6 as exit signals)
-- **Earnings exit:** default close before earnings ≤2 days unless exceptional conditions met
-- **Give-back protection:** each open position's peak unrealized gain since entry (and how much has been given back) is computed every session and shown to the orchestrator. A position that has given back ≥50% of a ≥8% peak gain, while still net profitable, with no fresh momentum is treated as an independent profit-taking signal — it doesn't have to wait for thesis breakage or the (wide, 8–20%) trailing stop to trigger. Default on a winning intact-thesis position is HOLD.
-- **Computed market regime (2026-07-03):** BULL/NEUTRAL/BEAR derived from SPY vs its 20d/50d SMAs + sector-ETF breadth, with net exposure targets per regime (BULL 60–110% / NEUTRAL 20–60% / BEAR −20–+30%). Replaces the orchestrator's self-assessed regime read.
+## Results, honestly
 
-## Database Schema (Neon — `stocks` schema)
+This is a live experiment, not a solved problem. The fund has **not** consistently beaten SPY. Its strategy layer has been rewritten twice in response to measured failures (entries were chasing extended prices; exits were firing on one-session noise).
 
-| Table | Purpose |
-|-------|---------|
-| `specialist_signals` | Raw JSON signal output per niche per session |
-| `portfolio_snapshots` | Portfolio state + P&L vs SPY per session |
-| `watchlist` | Stocks flagged for monitoring with entry trigger |
-| `earnings_calendar` | Upcoming earnings dates per ticker |
-| `correlation_matrix` | Pairwise 90-day correlation for all 100 stocks |
-| `stock_fundamentals` | P/E, P/B, P/S, margins, analyst consensus (morning refresh) |
-| `trades` | Unified trade lifecycle — OPEN at entry, CLOSED with full post-mortem attribution at exit; source of truth for trade history |
-| `specialist_accuracy` | 30-day hit rate, scaling factor, calibration error per specialist |
-| `pattern_performance` | EV, win rate, avg win/loss per signal pattern type |
-| `investor_letters` | LLM-written investor letters per close session (session UNIQUE) |
+Publishing that is the point. The audits document the diagnosis of each failure, the code that addressed it, and whether it worked. The engineering achievement is a system that finds its own bugs — including ones that made its own reported P&L wrong by $1,580 — not a backtest curve.
 
-## Prompts
+---
 
-Reference/spec versions are in `/prompts/`. The prompts that execute are embedded in the Code nodes:
+## Repository Map
 
-| File | Embedded in |
-|------|-------------|
-| `specialist_prompt.md` | `build_specialist_message.js` (constant `SPECIALIST_SYSTEM_PROMPT`) |
-| `orchestrator_prompt.md` | `06_build_orchestrator_input.js` (constant `ORCHESTRATOR_SYSTEM_PROMPT`) |
-| `post_mortem_prompt.md` | `post_mortem_build_input.js` (constant `POST_MORTEM_SYSTEM_PROMPT`) |
+```
+workflows/code/      # Node logic — the trading brain (version-controlled, auto-deployed)
+prompts/             # Specialist / orchestrator / post-mortem system prompts
+automation/          # Self-audit layer: canary, weekly audit, n8n sync, backtest
+audits/              # Weekly self-audit reports + initiatives register
+web/                 # Next.js dashboard
+.github/workflows/   # Scheduled canary, weekly audit, deploy sync
+```
 
-The prompt files and the embedded constants are kept in full sync. When editing a prompt, update both the `/prompts/` reference file and the embedded constant in the Code node.
+---
+
+## Running it
+
+The trading system is infrastructure-dependent — it needs an n8n instance, a Neon database, and Alpaca keys, so it isn't `git clone && npm start`. What *is* directly runnable:
+
+```bash
+# Dashboard (needs DATABASE_URL + Alpaca keys in web/.env.local)
+cd web && npm install && npm run dev
+
+# Integrity canary against your own deployment
+node automation/canary.mjs
+
+# Backtest harness — replays entry gates against historical bars
+node automation/backtest.mjs
+```
+
+The n8n workflow topology is documented in `workflows/*_blueprint.md`, and every Code node's source is in `workflows/code/`, mapped to its live node by `automation/n8n_manifest.json`.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).

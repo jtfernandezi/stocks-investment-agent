@@ -48,6 +48,7 @@ const API_BASE = process.env.N8N_API_BASE || manifest.apiBaseDefault;
 const API_KEY = process.env.N8N_API_KEY;
 
 if (!API_KEY) { console.error("✖ N8N_API_KEY not set"); process.exit(1); }
+if (!API_BASE) { console.error("✖ N8N_API_BASE not set (and no manifest default)"); process.exit(1); }
 
 // Compare ignoring trailing whitespace/newlines (n8n strips the final newline that
 // git files keep) so that's never reported as a difference.

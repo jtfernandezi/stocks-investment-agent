@@ -10,7 +10,7 @@ set -a
 set +a
 
 # Resolve node robustly (launchd has no nvm/PATH): pinned → newest nvm → PATH
-NODE="/Users/jjtfernandez/.nvm/versions/node/v24.15.0/bin/node"
+NODE="$HOME/.nvm/versions/node/v24.15.0/bin/node"
 [ -x "$NODE" ] || NODE="$(ls -t "$HOME"/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)"
 [ -x "$NODE" ] || NODE="$(command -v node || true)"
 

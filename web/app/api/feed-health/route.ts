@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const N8N_BASE  = 'https://<N8N_HOST>/api/v1';
+const N8N_BASE  = process.env.N8N_API_BASE ?? '';
 const N8N_KEY   = process.env.N8N_API_KEY!;
 const WORKFLOW  = 'l2d06hEvDlfLibms';
 

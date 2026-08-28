@@ -14,3 +14,8 @@ secrets.env
 *.tmp.mjs
 .tmp_*.mjs
 automation/cache/
+
+# never publish — machine-generated exports contain credentials
+workflows/n8n/
+fetch.log
+*.log

@@ -1,6 +1,6 @@
 {
   "_comment": "Maps each workflows/code/*.js file to the live n8n Code node that runs it. Used by sync_n8n.mjs to push merged code into n8n. ONE file == ONE node here. Files NOT listed (see manualOnly) must be synced by hand. Verified against live n8n 2026-06-12.",
-  "apiBaseDefault": "https://<N8N_HOST>/api/v1",
+  "apiBaseDefault": null,
   "workflows": {
     "main": "l2d06hEvDlfLibms",
     "watchdog": "7n1bPJ91OkMx3KM4",

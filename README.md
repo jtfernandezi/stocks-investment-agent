@@ -4,7 +4,11 @@
 
 Eleven LLM agents research and trade a $60,000 paper portfolio across 100 US equities. A separate meta-layer reviews the fund every week, diagnoses its own failures, writes the fixes as code, and opens them as PRs — where a human, and only a human, decides whether they ship.
 
-<!-- BADGES -->
+![status](https://img.shields.io/badge/status-paused%20experiment-orange)
+![n8n](https://img.shields.io/badge/orchestration-n8n-EA4B71)
+![Postgres](https://img.shields.io/badge/db-Neon%20Postgres-336791)
+![Next.js](https://img.shields.io/badge/dashboard-Next.js%2015-black)
+![license](https://img.shields.io/badge/license-MIT-blue)
 
 | | |
 |---|---|
@@ -13,7 +17,10 @@ Eleven LLM agents research and trade a $60,000 paper portfolio across 100 US equ
 | **Agents** | 10 sector specialists → 1 portfolio orchestrator → 1 post-mortem attributor |
 | **Self-audit** | Weekly, longitudinal, ships coded PRs |
 
-<!-- SCREENSHOTS -->
+![Dashboard](docs/screenshots/home.png)
+
+<sub>Live dashboard — equity curve vs SPY, the 10-specialist signal grid, and sector attribution.
+More: [portfolio](docs/screenshots/portfolio.png) · [performance](docs/screenshots/performance.png) · [agent calibration](docs/screenshots/agent.png) · [research](docs/screenshots/research.png) · [investor letter](docs/screenshots/letter.png)</sub>
 
 ---
 
@@ -97,11 +104,31 @@ Both drove permanent additions to a deterministic daily canary that reconciles t
 
 ## Results, honestly
 
-This is a live experiment, not a solved problem. The fund has **not** consistently beaten SPY. Its strategy layer has been rewritten twice in response to measured failures (entries were chasing extended prices; exits were firing on one-session noise).
+The fund **underperformed**. Over the tracked window (2026-05-28 → 2026-07-27, 200 sessions):
 
-Publishing that is the point. The audits document the diagnosis of each failure, the code that addressed it, and whether it worked. The engineering achievement is a system that finds its own bugs — including ones that made its own reported P&L wrong by $1,580 — not a backtest curve.
+| | |
+|---|---|
+| Fund | **−4.87%** |
+| SPY, same window | **−1.52%** |
+| Alpha | **−3.35pp** |
+| Closed trades | 40 · **35% win rate** · −$1,401 realized |
 
----
+It ran autonomously for three months and is now paused.
+
+I'm publishing the numbers because the interesting part isn't the return — it's what the
+system found out about itself. The `audits/` directory contains unedited weekly reports
+where it grades its own levers 🔴 and diagnoses its own failures. A representative one:
+
+> *"The fund traded for two weeks on partially fictional prices — and the books are wrong
+> even though the broker is fine."* — [audit 2026-07-19](audits/2026-07-19.md)
+
+That audit traced a data-integrity bug through to its consequences: a price API's row limit
+silently outgrown, ten tickers served year-old prices, three trades sized and recorded
+against fiction, and a reported P&L that was **$1,580 wrong in the fund's own favour**. It
+then wrote the detection and a fail-closed guard as two separate pull requests.
+
+Diagnosing that is harder than picking stocks, and it's the part of this project I'd
+want to be judged on.
 
 ## Repository Map
 

@@ -19,8 +19,24 @@ Eleven LLM agents research and trade a $60,000 paper portfolio across 100 US equ
 
 ![Dashboard](docs/screenshots/home.png)
 
-<sub>Live dashboard — equity curve vs SPY, the 10-specialist signal grid, and sector attribution.
-More: [portfolio](docs/screenshots/portfolio.png) · [performance](docs/screenshots/performance.png) · [agent calibration](docs/screenshots/agent.png) · [research](docs/screenshots/research.png) · [investor letter](docs/screenshots/letter.png)</sub>
+<sub>Live dashboard — equity curve vs SPY, the 10-specialist signal grid, and sector attribution. Numbers are from the real paper account. Note that the dashboard's headline cards (+0.79% return) disagree with its own monthly-returns row (−4.87%), which is the figure used in [Results, honestly](#results-honestly).</sub>
+
+<table>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/performance.png" alt="Performance page: equity curve vs SPY, monthly returns, Sharpe, drawdown, win rate and benchmark metrics" /><br/><sub><b>Performance:</b> the underperformance, measured honestly</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/agent.png" alt="Agent page: specialist accuracy leaderboard with calibration error and confidence scaling, and entry patterns blocked for negative expected value" /><br/><sub><b>Agent calibration:</b> hit rates rescale each specialist, and negative-EV patterns are blocked</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" align="center"><img src="docs/screenshots/research.png" alt="Research page: signal heatmap for 10 sectors across every session, and the latest specialist write-ups" /><br/><sub><b>Research:</b> every specialist signal, every session</sub></td>
+    <td width="50%" align="center"><img src="docs/screenshots/portfolio.png" alt="Portfolio page: open positions with trailing stops and conviction, plus concentration analysis" /><br/><sub><b>Portfolio:</b> positions, trailing stops and concentration</sub></td>
+  </tr>
+</table>
+
+<details>
+<summary><b>Investor letter</b>: the daily LP update written by GPT after each close session</summary>
+<br/>
+<img src="docs/screenshots/letter.png" alt="Investor letter page: archive of daily letters and the July 27 letter" width="900" />
+</details>
 
 ---
 
